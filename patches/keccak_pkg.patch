@@ -1,0 +1,261 @@
+--- cshake-core/verilog/keccak_pkg.v	2026-03-13 08:22:43.195849336 +0100
++++ src_rtl/keccak_pkg_64.v	2026-03-13 09:58:50.893218032 +0100
+@@ -1,14 +1,15 @@
++// This file is taken from the source metioned below (and modified). Our design is fixed to PARALLEL_SLICES = 64. 
++
+ 
+ /*
+  * These are defines used for the Keccak design, the defines come from keccak_pkg.vhd, 
+  * which was developed by Bernhard Jungk <bernhard@projectstarfire.de>
+  * 
+  * Copyright (C): 2019
+- * Author:        Bernhard Jungk <bernhard@projectstarfire.de>
+- *                Jakub Szefer <jakub.szefer@yale.edu>
++ * Author:        Jakub Szefer <jakub.szefer@yale.edu>
+  *                Xiayuan Wen <xiayuan.wen@yale.edu>
+  *                Shanquan Tian <shanquan.tian@yale.edu>
+- * Updated:       2023-01-21
++ * 
+  *          
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License as published by
+@@ -27,69 +28,127 @@
+ */
+ 
+ /*
+-The variables below must be the power of 2
+- -  NUM_SLICES / WIN
+- -  NUM_SUB_ROUNDS
+-*/
++Requirement, below must be power of 2:
++NUM_SLICES / WIN
++NUM_SUB_ROUNDS
+ 
++*/
+ 
++`include "mirath_hw_params.vh"
+ 
+-`ifndef KECCAK_PKG
+-`define KECCAK_PKG
+-
+-// number of slices processed in parallel  (possible values: 1,2,4,8,16,32)
+-`define PARALLEL_SLICES                    32
+-
++`ifndef KECCAK_PKG_64
++`define KECCAK_PKG_64
+ 
+ 
+-// input bit width                         (fixed to 32 bit)
+-`define WIN                                32
+-// output bit width                        (fixed to 32 bit)
+-`define WOUT                               32
++// input bit width                         (fixed to 64 bit)
++`define WIN                                64
++`define HALF_WIN                           (`WIN/2)
++// output bit width                        (fixed to 64 bit)
++`define WOUT                               64
++`define HALF_WOUT                          (`WOUT/2)
+ // number of rounds for Keccak-f           (fixed to 24)
+ `define KECCAK_ROUNDS                      24
+-// number of slices in Keccak-f            (fixed to 64 for Keccak-1600)
++// number of slices in Keccak-f            (fixed to 64 for Keccak-1600) FIXME can be changed?
+ `define NUM_SLICES                         64
+ 
++// num of state bits Keccak-1600
++`define STATE_BITS                         1600
++
++// bits per slice
++`define SLICE_BITS                         25
++
+ // Keccak rates for shake and cshake       (possible rates 1344 (128 bit variant) and 1088 (256 bit variant)
++// old definitions
++// `define RATE                               1344
++// `define RATE_WIDTH                         `CLOG2(`RATE-1)
+ `define RATE_128                           1344
+ `define RATE_WIDTH_128                     `CLOG2(`RATE_128+1)
+ `define RATE_256                           1088
+ `define RATE_WIDTH_256                     `CLOG2(`RATE_256+1)
+-`define RATE_WIDTH                         `RATE_WIDTH_128
++`define RATE_WIDTH                         `RATE_WIDTH_128 //`RATE_WIDTH_128
++
++// Note: Adding native SHA3-384 and SHA3-512 support
++`define RATE_384                           832
++`define RATE_WIDTH_384                     `CLOG2(`RATE_384+1)
++`define RATE_512                           576
++`define RATE_WIDTH_512                     `CLOG2(`RATE_512+1)
++
++// Choose 1 rate for SHA-3 and one for SHAKE
++`define RATE_SHA3                          `RATE_BITS_SHA3
++`define RATE_SHAKE                         `RATE_BITS_SHAKE
++`define RATE_WIDTH_SHA3                    `CLOG2(`RATE_SHA3+1)
++`define RATE_WIDTH_SHAKE                   `CLOG2(`RATE_SHAKE+1)
++`define LANES_SHA3                         (`RATE_SHA3/`NUM_SLICES)
++`define LANES_SHAKE                        (`RATE_SHAKE/`NUM_SLICES)
+ 
+ // different prefix used for cshake128 (X"10010001a801") and cshake256 (X"100100018801")
++// `define CSHAKE_PREFIX                      48'h10010001a801
+ `define CSHAKE_PREFIX_128                  48'h10010001a801
+ `define CSHAKE_PREFIX_256                  48'h100100018801
+ 
++`define MUX_128_MODE                       2'b00
++`define MUX_256_MODE                       2'b01
++`define MUX_384_MODE                       2'b10
++`define MUX_512_MODE                       2'b11
++
++`define PARALLEL_SLICES                    64 // FIXED
+ 
+-`define NUM_SUB_ROUNDS                `NUM_SLICES/`PARALLEL_SLICES
+-`define MAX_SUB_ROUNDS                `NUM_SUB_ROUNDS-1
+-`define NUM_ROUND_COUNT               (`KECCAK_ROUNDS+1)*`NUM_SUB_ROUNDS
+-`define MAX_ROUND_COUNT               `NUM_ROUND_COUNT-1
++
++`define NUM_SUB_ROUNDS                `NUM_SLICES/`PARALLEL_SLICES //=64 when PARALLEL_SLICES=1
++`define MAX_SUB_ROUNDS                `NUM_SUB_ROUNDS-1// =63 when PARALLEL_SLICES=1
++//`define NUM_ROUND_COUNT               (`KECCAK_ROUNDS+1)*`NUM_SUB_ROUNDS//25*64=1600 when PARALLEL_SLICES=1
++`define NUM_ROUND_COUNT               (`KECCAK_ROUNDS)*`NUM_SUB_ROUNDS//25*64=1600 when PARALLEL_SLICES=1
++`define MAX_ROUND_COUNT               `NUM_ROUND_COUNT-1//=1599 when PARALLEL_SLICES=1
+ `define ROUND_COUNT_WIDTH             `CLOG2(`MAX_ROUND_COUNT+1)
+ 
+ 
+-`define NUM_SUB_READS_COUNT           `WIN/`PARALLEL_SLICES
+-`define MAX_SUB_READS_COUNT           `NUM_SUB_READS_COUNT-1
+-`define SUB_READS_COUNT_WIDTH         `DIVCLOG2(`MAX_SUB_READS_COUNT+1)
++// For win = 32 and parallel_slices = 64, we need to change the data absorption phase
++//`define NUM_SUB_READS_COUNT           `WIN/`PARALLEL_SLICES//= 32/ 1 = 32 when PARALLEL_SLICES=1
++`define NUM_SUB_READS_COUNT           1
++`define MAX_SUB_READS_COUNT           `NUM_SUB_READS_COUNT-1//=31 when PARALLEL_SLICES=1
++
++`define SUB_READS_COUNT_WIDTH       `DIVCLOG2(`MAX_SUB_READS_COUNT+1)
+ 
+-`define NUM_READS_COUNT_128           `RATE_128/`WIN*`NUM_SUB_READS_COUNT
+-`define MAX_READS_COUNT_128           `NUM_READS_COUNT_128-1
++//    `define SUB_READS_COUNT_WIDTH         `CLOG2(`MAX_SUB_READS_COUNT+1)// SHANQUAN's edit 32
++//        `define SUB_READS_COUNT_WIDTH         0//   DEBUG
++
++//`define SUB_READS_COUNT_WIDTH (`PARALLEL_SLICES < 32)? `CLOG2(`MAX_SUB_READS_COUNT+1) : 0
++
++// `define NUM_READS_COUNT               `RATE/`WIN*`NUM_SUB_READS_COUNT
++// `define MAX_READS_COUNT               `NUM_READS_COUNT-1
++// `define COUNTER_WIDTH                 `CLOG2(`MAX_READS_COUNT)// 
++
++`define NUM_READS_COUNT_128           `RATE_128/`WIN*`NUM_SUB_READS_COUNT//=1344/32*32=1344 when PARALLEL_SLICES=1
++`define MAX_READS_COUNT_128           `NUM_READS_COUNT_128-1//=1343 when PARALLEL_SLICES=1
+ `define COUNTER_WIDTH_128             `CLOG2(`MAX_READS_COUNT_128+1)
+-`define NUM_READS_COUNT_256           `RATE_256/`WIN*`NUM_SUB_READS_COUNT
+-`define MAX_READS_COUNT_256           `NUM_READS_COUNT_256-1
++`define NUM_READS_COUNT_256           `RATE_256/`WIN*`NUM_SUB_READS_COUNT//=1088/32*32=1088 when PARALLEL_SLICES=1
++`define MAX_READS_COUNT_256           `NUM_READS_COUNT_256-1//=1087 when PARALLEL_SLICES=1
+ `define COUNTER_WIDTH_256             `CLOG2(`MAX_READS_COUNT_256+1)
+ 
++// Note: Adding native support for all SHA-3 rates
++`define NUM_READS_COUNT_384           `RATE_384/`WIN*`NUM_SUB_READS_COUNT
++`define MAX_READS_COUNT_384           `NUM_READS_COUNT_384-1
++`define COUNTER_WIDTH_384             `CLOG2(`MAX_READS_COUNT_384+1)
++`define NUM_READS_COUNT_512           `RATE_512/`WIN*`NUM_SUB_READS_COUNT
++`define MAX_READS_COUNT_512           `NUM_READS_COUNT_512-1
++`define COUNTER_WIDTH_512             `CLOG2(`MAX_READS_COUNT_512+1)
++
+ `define COUNTER_WIDTH                 `COUNTER_WIDTH_128
+ 
+-`define DATAPATH_WIDTH                `PARALLEL_SLICES*25
++`define MAX_READS_COUNT_SHA_3         ( (`RATE_SHA3==`RATE_256) ?  `MAX_READS_COUNT_256 : ((`RATE_SHA3==`RATE_384) ? `MAX_READS_COUNT_384 : `MAX_READS_COUNT_512) )
++`define MAX_READS_COUNT_SHAKE         ( (`RATE_SHAKE==`RATE_256) ?  `MAX_READS_COUNT_256 : `MAX_READS_COUNT_128 )
+ 
++  // constant num_write_count_per_squeeze_128  : natural := (rate_128/wout)*num_sub_rounds;
++  // constant max_write_count_per_squeeze_128  : natural := num_write_count_per_squeeze_128-1;
+ 
+-`endif
++  // constant num_write_count_per_squeeze_256  : natural := (rate_256/wout)*num_sub_rounds;
++  // constant max_write_count_per_squeeze_256  : natural := num_write_count_per_squeeze_256-1;
+ 
++`define DATAPATH_WIDTH                `PARALLEL_SLICES*25//=25 when PARALLEL_SLICES=1
+ 
+ 
++`endif
++
+ 
+ `ifndef rho_offset_DEFINE
+ `define rho_offset_DEFINE
+@@ -215,6 +274,36 @@
+     (i == 24) ? ((2) & (`PARALLEL_SLICES-1)) :\
+     0)
+ 
++`define RHO_OFFSET_I_DIV_64(i)      `RHO_OFFSET(i/`NUM_SLICES)
++// /`X  = >> `CLOG2(`X)
++
++// `define RHO_ADDR_OFFSET(i) (\
++//     (i == 0) ? ((0 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 1) ? ((44 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 2) ? ((43 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 3) ? ((21 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 4) ? ((14 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 5) ? ((28 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 6) ? ((20 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 7) ? ((3 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 8) ? ((45 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 9) ? ((61 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 10) ? ((1 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 11) ? ((6 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 12) ? ((25 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 13) ? ((8 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 14) ? ((18 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 15) ? ((27 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 16) ? ((36 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 17) ? ((10 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 18) ? ((15 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 19) ? ((56 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 20) ? ((62 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 21) ? ((55 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 22) ? ((39 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 23) ? ((41 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     (i == 24) ? ((2 >> `CLOG2(`RHO_SLICES_DIVIDER)) & (`NUM_SUB_ROUNDS-1)) :\
++//     0)
+ 
+ // /`X  = >> `CLOG2(`X) but be careful about 1! becase we used a customized clog2
+ 
+@@ -247,8 +336,10 @@
+     0)
+ 
+ 
++`define MOD64(i)    ((i >= 64) ? (i-64) : ( (i<0) ? (i+64) : (i)))
+ 
+ `define MOD5(i) (\
++    (i ==-1) ? 4 :\
+     (i == 0) ? 0 :\
+     (i == 1) ? 1 :\
+     (i == 2) ? 2:\
+@@ -277,6 +368,31 @@
+     (i == 25) ? 0:\
+     0)
+     
++    `define INVERSE_RHO(i)     \
++    ((i)== 0 ? 6'd0  :         \
++     (i)== 1 ? 6'd63 :         \
++     (i)== 2 ? 6'd2  :         \
++     (i)== 3 ? 6'd36 :         \
++     (i)== 4 ? 6'd37 :         \
++     (i)== 5 ? 6'd28 :         \
++     (i)== 6 ? 6'd20 :         \
++     (i)== 7 ? 6'd58 :         \
++     (i)== 8 ? 6'd9  :         \
++     (i)== 9 ? 6'd44 :         \
++     (i)==10 ? 6'd61 :         \
++     (i)==11 ? 6'd54 :         \
++     (i)==12 ? 6'd21 :         \
++     (i)==13 ? 6'd39 :         \
++     (i)==14 ? 6'd25 :         \
++     (i)==15 ? 6'd23 :         \
++     (i)==16 ? 6'd19 :         \
++     (i)==17 ? 6'd49 :         \
++     (i)==18 ? 6'd43 :         \
++     (i)==19 ? 6'd56 :         \
++     (i)==20 ? 6'd46 :         \
++     (i)==21 ? 6'd62 :         \
++     (i)==22 ? 6'd3  :         \
++     (i)==23 ? 6'd8  :         \
++                6'd50)   // i == 24
+ 
+-`endif
+-
++`endif
+\ No newline at end of file

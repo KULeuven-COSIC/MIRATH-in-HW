@@ -1,0 +1,87 @@
+--- cshake-core/verilog/rc.v	2026-03-13 08:22:43.195849336 +0100
++++ src_rtl/rc_64.v	2026-03-13 09:58:50.904218331 +0100
+@@ -3,8 +3,7 @@
+  * which was developed by Bernhard Jungk <bernhard@projectstarfire.de>
+  * 
+  * Copyright (C): 2019
+- * Author:        Bernhard Jungk <bernhard@projectstarfire.de>
+- *                Shanquan Tian <shanquan.tian@yale.edu>
++ * Author:        Shanquan Tian <shanquan.tian@yale.edu>
+  * Updated:       2019-06-14
+  *          
+  * This program is free software; you can redistribute it and/or modify
+@@ -23,16 +22,16 @@
+  *
+ */
+ 
+-
+ `include "clog2.v"
+-`include "keccak_pkg.v"
++`include "keccak_pkg_64.v"
+ 
+-module rc(
++module rc_64(
+     input wire                          clk,
+-    input wire                          rst,
+     input wire [`ROUND_COUNT_WIDTH-1:0] round,
+-    output reg [`PARALLEL_SLICES-1:0]  rcout
+-);
++    output reg [`PARALLEL_SLICES-1:0]   rcout
++    );
++
++    localparam ROUND_COUNT_WIDTH = `ROUND_COUNT_WIDTH;
+ 
+ (* ram_style = "block" *) reg [1599:0] rc_const_all = {
+     64'h8000000080008008 ,
+@@ -58,39 +57,16 @@
+     64'h8000000080008000 ,
+     64'h800000000000808A ,
+     64'h0000000000008082 ,
+-    64'h0000000000000001 ,
+-    64'h0000000000000000 
+-};
+-
+-wire [`PARALLEL_SLICES-1:0] rc_const [0:(25*`NUM_SUB_ROUNDS -1)];
+-
+-reg [`CLOG2(`MAX_ROUND_COUNT+1):0] round_natural;
+-
+-generate
+-    genvar i;
+-    for (i = 0; i < (25*`NUM_SUB_ROUNDS); i = i + 1) begin: generate_rc_const
+-        assign rc_const[i] = rc_const_all[(i >> `DIVCLOG2(`NUM_SUB_ROUNDS))*64 +
+-                                (i & (`NUM_SUB_ROUNDS-1))*`PARALLEL_SLICES +
+-                                `PARALLEL_SLICES-1 -: `PARALLEL_SLICES] ;
+-    end
+-endgenerate
+-
+-
+-always @(round) begin
+-    if(round < `MAX_ROUND_COUNT) begin
+-      round_natural = round + 1'b1;
+-    end
+-    else begin
+-      round_natural = 0;
+-    end
+-end
+-
+-always @(posedge clk) begin
+-    rcout <= rc_const[round_natural];
++    64'h0000000000000001 
++//    ,
++//    64'h0000000000000000 
++};   
++
++always @* begin
++    if(round>=`KECCAK_ROUNDS)
++        rcout <= 1'b0;
++    else
++        rcout <= rc_const_all[round*`PARALLEL_SLICES+:`PARALLEL_SLICES];
+ end
+ 
+-
+-
+-
+-endmodule
+-
++endmodule
+\ No newline at end of file

@@ -1,0 +1,7 @@
+[submodule "aes"]
+	path = aes
+	url = https://github.com/secworks/aes.git
+	branch = on_the_fly_keygen
+[submodule "cshake-core"]
+	path = cshake-core
+	url = https://github.com/caslab-code/cshake-core.git

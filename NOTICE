@@ -1,0 +1,11 @@
+Some parts of our design rely on open-source code:
+
+AES core released under BSD-2-Clause license.
+Copyright (c) 2014 by Joachim Strombergson.
+
+Relevant modified files are: aes_core_dual_fast.v, aes_encipher_block_dual_fast.v, aes_sbox_parallel.v, aes_keymem_stream.v, aes_sbox.v
+
+SHA-3 core released under GPL-3.0 license and Apache-2.0.
+Copyright (c) Bernhard Jungk, Shanquan Tian, Xiayuan Wen and Jakub Szefer, and SandboxAQ.
+
+Relevant modified files are: keccak_top.v, keccak_control.v, rc.v, keccak_pkg.v

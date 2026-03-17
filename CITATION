@@ -1,0 +1,7 @@
+@misc{cryptoeprint:2026/206,
+      author = {Stelios Manasidis and Quinten Norga and Suparna Kundu and Ingrid Verbauwhede},
+      title = {{MPSpeed}: Implementing and Optimizing {MPC}-in-the-Head Digital Signatures in Hardware},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2026/206},
+      year = {2026},
+      url = {https://eprint.iacr.org/2026/206}
+}
