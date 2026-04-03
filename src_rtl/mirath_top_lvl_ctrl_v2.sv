@@ -507,20 +507,27 @@ always_comb begin
             // *********************
             // Hash the commits:
             if (~party_is_i_star_fr_aes)
-                keccak_din_next         = cmt_fifo_dout;
-//                keccak_din_next         = data_mem_dout;
+                keccak_din_next         = cmt_fifo_dout; // If party_idx == i* , we should be reading from the sig instead
             
+            if ((commit_valid_train[0])) begin
+                if (verify)
+                    key_sig_mem_addr_opc_next = GOTO_COMMIT;
+            end else if (verify) begin
+                    key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
+            end
+           
             if (~prep_store_hash_subctx) begin
-                if (commit_valid_train[0]) begin
-                    if (verify)
-                        key_sig_mem_addr_opc_next = GOTO_COMMIT;
-//                    data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
-        //            end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] && ~k_look_ahead_state) begin
-                end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] || keccak_din_valid) begin
-                    if (verify)
-                        key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
-//                    data_mem_addr_opc_next = PLUS_1_D_M_TL;
-                end
+//                if (commit_valid_train[0]) begin
+//                    if (verify)
+//                        key_sig_mem_addr_opc_next = GOTO_COMMIT;
+////                    data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
+//        //            end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] && ~k_look_ahead_state) begin
+//                end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] || keccak_din_valid) begin
+//                    if (verify)
+//                        key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
+////                    data_mem_addr_opc_next = PLUS_1_D_M_TL;
+//                end
+                
                 
 //                if (|commit_valid_train[1 +: (`COMMIT_WORDS)] || keccak_input_ctr!=0)
                 if (|commit_valid_train[1 +: (`COMMIT_WORDS)])
@@ -549,8 +556,13 @@ always_comb begin
                     if (keccak_data_done_train[0]) begin // Start the next hash subctx
                         keccak_input_ctr_rst_next = 1'b1;
                         keccak_input_ctr_rst_val_next = commit_buf_idx ? 3'h2 : 3'h6;
-//                        data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
+                        
+                        //                        data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
                     end
+                    
+                    if (verify && keccak_data_done_train[1])
+                        key_sig_mem_addr_opc_next = GOTO_COMMIT; // Note: little bugfix (i* at the start of MPC round with commit_buf_idx==1'b1)
+
 //                    else if (|keccak_data_done_train[3:1])
 //                        data_mem_addr_opc_next = PLUS_1_D_M_TL;
                         
