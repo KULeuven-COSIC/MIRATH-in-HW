@@ -1,3 +1,24 @@
+/*
+ * a_mem_wrapper.sv
+ * -----------
+ * This file is an interface between the VecAlpha MAC module (shown in
+ * Figure 4) and the rest of the design.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "math.vh"
 `include "mirath_hw_params.vh"
 
