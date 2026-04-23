@@ -1,4 +1,4 @@
-// Simple math operation defines
+// This verilog header file implements simple arithmetic functions as Verilog macros
 
 `define GET_BYTES(x)    ((x+7)/8)
 
