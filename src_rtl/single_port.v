@@ -1,5 +1,5 @@
  /*
-  * This file implements a simple dual-port memory module.
+  * This file implements a single port memory module.
   *
   * Derived from an AMD/Xilinx memory template and modified for this project.
   *
