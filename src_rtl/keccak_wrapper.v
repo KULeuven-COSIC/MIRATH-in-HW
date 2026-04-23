@@ -1,3 +1,29 @@
+/*
+ * keccak_wrapper.v
+ * ------------
+ * This file is a wrapper containing the SHA3 / Keccak engine and the
+ * modules used to interface it to the rest of the system. The
+ * control_to_keccak_router, k_input_fifo, and keccak_to_control_router modules
+ * instantiated here simplify the connections between the SHA3 / Keccak
+ * engine and the top-level controller FSM and allows input data to be
+ * streamed directly independently of whether the engine is currently in
+ * the IDLE, ABSORB or PROCESS state.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "clog2.v"
 `include "keccak_pkg_64.v"
 `include "keccak_interc_defs.vh"
