@@ -1,3 +1,29 @@
+/*
+ * aes_FSM_v2.sv
+ * ---------
+ * This file implements the GGM Tree FSM. All bookkeeping related to the
+ * GGM tree is performed here.
+ *
+ * To keep external wrapper complexity minimal, memory modules used for
+ * the bookkeeping of operations are directly instantiated here. This
+ * includes the valid-bit RAM (valid_bit_ram), i* RAM (i_star_ram), and
+ * partial ordered list (part_ord_list_inst).
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "aes_parameters.vh"
 
 `default_nettype none
