@@ -1,4 +1,10 @@
-// A simplified version of the one given by AMD.
+ /*
+  * This file implements a simplified dual-port memory module with optional hex-file initialization.
+  *
+  * Derived from an AMD/Xilinx memory template and modified for this project.
+  *
+  */
+
 `include "clog2.v"
 
 `default_nettype none
