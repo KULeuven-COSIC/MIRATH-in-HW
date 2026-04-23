@@ -1,3 +1,28 @@
+/*
+ * base_mem_wrapper.sv
+ * -------------
+ * This file corresponds to the MatBase MAC module shown in Figure 4.
+ * It captures the high-througput sample coming from the AES/Rijndael
+ * and forwards them to the S_base (Sb_mem_acc) and C'_base (Cb_mem_acc)
+ * accumulators instantiated in the same file. A small FSM is used to
+ * bookkeep the incoming samples and provide read addresses to the
+ * S_base and C'_base accumulators.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "math.vh"
 `include "mirath_hw_params.vh"
 `include "E_mul_defines.svh"
