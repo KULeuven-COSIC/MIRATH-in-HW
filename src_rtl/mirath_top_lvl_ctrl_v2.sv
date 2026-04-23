@@ -1,3 +1,30 @@
+/*
+ * mirath_top_lvl_ctrl_v2.sv
+ * --------------
+ * This file is the top-level Controller FSM of our hardware implementation of Mirath.
+ *
+ * To keep the complexity of the top-level wrapper (mirath_wrapper_v2) minimal,
+ * a few modules that are directly interfaced with the top-level controller are
+ * also directly instantiated here. These are the accumulator of the auxiliary
+ * value aux (see aux_acc), a small distibuted memory that stores the secret
+ * matrices S and C' (S_C_mem), and a second distibuted memory (h_subctx_mem)
+ * that is used to store the hash values that are derived by hashing the commitments.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "mirath_hw_params.vh"
 
 `default_nettype none
