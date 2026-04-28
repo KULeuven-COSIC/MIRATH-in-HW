@@ -1,5 +1,5 @@
 /*
- * mirath_hw_params.vh
+ * keccak_interc_defs.vh
  * -----------
  * This header file declares some parameters specific to the SHA3 / Keccak
  * interface modules.
