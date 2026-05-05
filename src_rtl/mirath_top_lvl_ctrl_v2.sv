@@ -1,3 +1,30 @@
+/*
+ * mirath_top_lvl_ctrl_v2.sv
+ * --------------
+ * This file is the top-level Controller FSM of our hardware implementation of Mirath.
+ *
+ * To keep the complexity of the top-level wrapper (mirath_wrapper_v2) minimal,
+ * a few modules that are directly interfaced with the top-level controller are
+ * also directly instantiated here. These are the accumulator of the auxiliary
+ * value aux (see aux_acc), a small distibuted memory that stores the secret
+ * matrices S and C' (S_C_mem), and a second distibuted memory (h_subctx_mem)
+ * that is used to store the hash values that are derived by hashing the commitments.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "mirath_hw_params.vh"
 
 `default_nettype none
@@ -507,20 +534,27 @@ always_comb begin
             // *********************
             // Hash the commits:
             if (~party_is_i_star_fr_aes)
-                keccak_din_next         = cmt_fifo_dout;
-//                keccak_din_next         = data_mem_dout;
+                keccak_din_next         = cmt_fifo_dout; // If party_idx == i* , we should be reading from the sig instead
             
+            if ((commit_valid_train[0])) begin
+                if (verify)
+                    key_sig_mem_addr_opc_next = GOTO_COMMIT;
+            end else if (verify) begin
+                    key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
+            end
+           
             if (~prep_store_hash_subctx) begin
-                if (commit_valid_train[0]) begin
-                    if (verify)
-                        key_sig_mem_addr_opc_next = GOTO_COMMIT;
-//                    data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
-        //            end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] && ~k_look_ahead_state) begin
-                end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] || keccak_din_valid) begin
-                    if (verify)
-                        key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
-//                    data_mem_addr_opc_next = PLUS_1_D_M_TL;
-                end
+//                if (commit_valid_train[0]) begin
+//                    if (verify)
+//                        key_sig_mem_addr_opc_next = GOTO_COMMIT;
+////                    data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
+//        //            end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] && ~k_look_ahead_state) begin
+//                end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] || keccak_din_valid) begin
+//                    if (verify)
+//                        key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
+////                    data_mem_addr_opc_next = PLUS_1_D_M_TL;
+//                end
+                
                 
 //                if (|commit_valid_train[1 +: (`COMMIT_WORDS)] || keccak_input_ctr!=0)
                 if (|commit_valid_train[1 +: (`COMMIT_WORDS)])
@@ -549,8 +583,13 @@ always_comb begin
                     if (keccak_data_done_train[0]) begin // Start the next hash subctx
                         keccak_input_ctr_rst_next = 1'b1;
                         keccak_input_ctr_rst_val_next = commit_buf_idx ? 3'h2 : 3'h6;
-//                        data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
+                        
+                        //                        data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
                     end
+                    
+                    if (verify && keccak_data_done_train[1])
+                        key_sig_mem_addr_opc_next = GOTO_COMMIT; // Note: little bugfix (i* at the start of MPC round with commit_buf_idx==1'b1)
+
 //                    else if (|keccak_data_done_train[3:1])
 //                        data_mem_addr_opc_next = PLUS_1_D_M_TL;
                         

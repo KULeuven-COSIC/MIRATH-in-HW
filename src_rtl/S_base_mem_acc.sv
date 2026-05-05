@@ -1,3 +1,24 @@
+/*
+ * S_base_mem_acc.sv
+ * -----------
+ * This file implements an array of simple Dual-Port Ram instances used to
+ * accumulate and store the S_base matrices for all MPCitH protocol iterations.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "math.vh"
 `include "mirath_hw_params.vh"
 

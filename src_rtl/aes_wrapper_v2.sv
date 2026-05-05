@@ -1,3 +1,25 @@
+/*
+ * aes_wrapper_v2.sv
+ * --------------
+ * This file instantiates the GGM Tree FSM (aes_FSM_v2) and the high-throughput
+ * dual AES engine, along with additional wiring and pipeline stages used to
+ * interface them to the rest of the design.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `default_nettype none
 
 `include "aes_parameters.vh"

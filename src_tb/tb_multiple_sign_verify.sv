@@ -1,3 +1,24 @@
+/*
+ * tb_multiple_sign_verify.sv
+ * --------------------
+ * This is a testbench that runs multiple sign & verify runs and computes
+ * the average latency (in clock cycles) for sign & verify.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `timescale 1ns / 1ps
 
 `include "mirath_hw_params.vh"
@@ -186,8 +207,9 @@ module tb_multiple_sign_verify;
 
       wait (tb_done);
       t_done_sign   = $time;
-      $display("[%0t] RUN %0d SIGN  : start=%0t done=%0t delta=%0t ps",
-               $time, run, t_start_sign, t_done_sign, t_done_sign - t_start_sign);
+//      $display("[%0t] RUN %0d SIGN  : start=%0t done=%0t delta=%0t ps",
+//               $time, run, t_start_sign, t_done_sign, t_done_sign - t_start_sign);
+      $display("[%0t] RUN %0d SIGN: delta = %0d cycles", $time, run, (t_done_sign - t_start_sign)/clk_period);
 
       sign_sum_ns += (t_done_sign - t_start_sign);
 
@@ -218,8 +240,9 @@ module tb_multiple_sign_verify;
     
       wait (tb_done);
       t_done_ver   = $time;
-      $display("[%0t] RUN %0d VERIFY: start=%0t done=%0t delta=%0t ps",
-               $time, run, t_start_ver, t_done_ver, t_done_ver - t_start_ver);
+//      $display("[%0t] RUN %0d VERIFY: start=%0t done=%0t delta=%0t ps",
+//               $time, run, t_start_ver, t_done_ver, t_done_ver - t_start_ver);
+      $display("[%0t] RUN %0d VERIFY: delta = %0d cycles", $time, run, (t_done_ver - t_start_ver)/clk_period);
 
       ver_sum_ns += (t_done_ver - t_start_ver);
 
@@ -237,8 +260,8 @@ module tb_multiple_sign_verify;
 
     // All runs passed if we got here
     $display("==== AVERAGES over %0d runs ====", num_runs);
-    $display("AVG SIGN  delta = %0t ps", sign_sum_ns / num_runs);
-    $display("AVG VERIFY delta = %0t ps", ver_sum_ns  / num_runs);
+    $display("AVG SIGN  delta = %0d cycles", sign_sum_ns / (num_runs*clk_period));
+    $display("AVG VERIFY delta = %0d cycles", ver_sum_ns  / (num_runs*clk_period));
 
     $finish;
   end
