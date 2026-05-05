@@ -2,6 +2,8 @@
 This repository contains the verilog/vhdl (RTL) sources of an efficient HW (FPGA) implementation of [Mirath](https://pqc-mirath.org/index.html), an MPC-in-the-Head-based post-quantum digital signature algorithm. 
 The design supports NIST security level I/V and all main routines (KeyGen, SigGen, SigVer). Our paper describing the design be found on [IACR ePrint](https://eprint.iacr.org/2026/206).
 
+This branch (`main`) contains the level I RTL code. The level V code can be found on the `L5` branch.
+
 ## :file_folder: Contents
 
 * [RTL sources](src_rtl): verilog/vhdl (design) source files.
