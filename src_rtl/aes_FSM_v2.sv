@@ -1,3 +1,29 @@
+/*
+ * aes_FSM_v2.sv
+ * ---------
+ * This file implements the GGM Tree FSM. All bookkeeping related to the
+ * GGM tree is performed here.
+ *
+ * To keep external wrapper complexity minimal, memory modules used for
+ * the bookkeeping of operations are directly instantiated here. This
+ * includes the valid-bit RAM (valid_bit_ram), i* RAM (i_star_ram), and
+ * partial ordered list (part_ord_list_inst).
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "aes_parameters.vh"
 
 `default_nettype none
@@ -46,7 +72,7 @@ typedef enum logic [1:0] { MODE_GGM, MODE_EXP_LEAF, MODE_COMMIT } aes_mode_t;
 typedef enum logic [1:0] { ST_CTR_COUNT_FREEZE, ST_CTR_COUNT_DOWN, ST_CTR_COUNT_RST } state_ctr_opcode_t;
 localparam ST_CTR_RST_VAL_TINY = 'h1;
 localparam ST_CTR_RST_VAL_SMALL = 'h2;
-localparam ST_CTR_RST_VAL_MEDIUM = 'h3;
+localparam ST_CTR_RST_VAL_MEDIUM = 'h4;
 // FREEZE_ADDR_D_M, GOTO_STORAGE, GOTO_GR_GP, GOTO_GRANDPA, GOTO_PARENT, GOTO_LEAF, PLUS_1_D_M, 
 typedef enum logic [2:0] {FREEZE_ADDR_D_M, GOTO_STORAGE, GOTO_GR_GP, GOTO_GRANDPA, GOTO_PARENT, GOTO_LEAF, PLUS_1_D_M } data_mem_addr_opcode_t;
 typedef enum logic [3:0] {FREEZE_ADDR_D_M_WR, GOTO_STORAGE_WR, GOTO_GR_GP_WR, GOTO_GRANDPA_WR, GOTO_PARENT_WR, GOTO_LEAF_WR, GOTO_PREV_LEAF_WR, PLUS_1_D_M_WR, GOTO_PREV_NODE_LEFT_CHILD_STORAGE_WR } data_mem_wr_addr_opcode_t;
@@ -86,7 +112,7 @@ module aes_FSM_v2 #(
     input wire [1:0]                start,
     
     input wire                      key_unpack_done,
-    input wire                      aes_core_ready_in_4,
+    input wire                      aes_core_ready_in_5,
     
     input wire [7:0]                i_star_in, // Make an automatic small mem to read these
     input wire                      i_star_valid,
@@ -165,7 +191,7 @@ reg [5:0] state_ctr_timeout_train;
 
 reg [1:0] four_counter;
 reg       four_counter_incr, four_counter_decr, four_counter_rst, four_counter_max;
-reg       four_counter_bit_sel, four_counter_bit_sel_pip, four_counter_bit_sel_pip_2, four_counter_bit_sel_pip_3;
+reg       four_counter_bit_sel, four_counter_bit_sel_pip, four_counter_bit_sel_pip_2, four_counter_bit_sel_pip_3, four_counter_bit_sel_sibl_path_1;
 reg       direct_move_to_next_expand;
 reg       goto_prep_GGM;
 reg       leave_expand_bridge;
@@ -182,6 +208,9 @@ reg                              part_ord_list_wren;
 reg                              part_list_dout_is_node_idx;
 
 reg cmt_fifo_incr_addr_wr, cmt_fifo_incr_addr_wr_next;
+
+reg path_len_reject_lookahead;
+always_ff @ (posedge clk) path_len_reject_lookahead <= ((path_len + mpc_round_aes_get_sibl_path) > (`MIRATH_PARAM_T_OPEN +0 +`TAU));
 
 reg consec_siblings_hidden_flag, raise_consec_siblings_hidden_flag, raise_consec_siblings_hidden_flag_next, lower_consec_siblings_hidden_flag, lower_consec_siblings_hidden_flag_next;
 always_ff @ (posedge clk) begin
@@ -234,17 +263,18 @@ reg start_asserted, start_en, verify;
 reg [$clog2(`N)-1:0] party_idx_aes, party_idx_aes_prev;
 wire [$clog2(`N)-1:0] i_star_mem_dout;
 reg [$clog2(`TAU)-1:0] mpc_round_aes_prev;
+reg [$clog2(`TAU)-1:0] mpc_round_aes_get_sibl_path;
 
 reg buff_idx, party_idx_0, party_idx_old_MSB, mpc_round_0, sub_round_0, party_idx_is_i_star, node_in_storage, new_round, next_sub_phase;
 
 reg party_idx_prev_MSB, party_idx_prev_MSB_1C, init_mpc_round, init_mpc_round_next, read_source_next, update_state, update_state_pip, force_state_update_next;
-reg aes_init_next, wren_data_mem_next, wren_key_sig_mem_next, aes_core_ready_in_1, aes_core_ready_in_2, aes_core_ready_in_3, last_party_idx, path_len_0;
+reg aes_init_next, wren_data_mem_next, wren_key_sig_mem_next, aes_core_ready_in_1, aes_core_ready_in_2, aes_core_ready_in_3, aes_core_ready_in_4, last_party_idx, path_len_0;
 reg rst_mpc_round, rst_mpc_round_next, commit_buff_idx, switch_commit_buff, rst_idx_S_CLEAN, node_idx_sub_lvl_2;
 reg ances_state_next_data_mem_addr;
 
-reg [12:0] aes_ready_train;
-reg [6:0]  first_cycles_train;
-reg aes_comm_init_pip, aes_comm_next_pip, aes_comm_next_pip_2;
+reg [64:0] aes_ready_train;
+reg [10:0]  first_cycles_train;
+reg aes_comm_init_pip, aes_comm_next_pip, aes_comm_next_pip_2, aes_comm_next_pip_3, aes_comm_next_pip_4, aes_comm_next_pip_5, aes_comm_next_pip_6, aes_comm_next_pip_7, aes_comm_next_pip_8;
 
 reg exit_node_reached, exit_fake_expand, node_idx_p1_is_2, store_res_next, load_key_from_res_0_next, load_key_from_res_1_next, load_salt_next, load_seed_next, node_idx_is_target, node_idx_is_target_pip, node_idx_is_target_delayed;
 
@@ -254,7 +284,8 @@ reg [$clog2(`TREE_NODES)-2:0] parent_idx_aes;
 reg [4:0] done_train;
 
 wire v_bit_mem_dout;
-reg v_bit_mem_dout_prev, v_bit_mem_dout_prev_2, v_bit_mem_dout_pip;
+reg v_bit_mem_dout_prev, v_bit_mem_dout_prev_2;//, v_bit_mem_dout_pip;
+reg [9:0] v_bit_mem_dout_pip_train;
 reg v_bit_mem_din_0, v_bit_mem_din_next_0, v_bit_mem_din_1, v_bit_mem_din_next_1, v_bit_mem_wren_0, v_bit_mem_wren_1, v_bit_mem_wren_next_0, v_bit_mem_wren_next_1, v_mem_clean_exit;
 
 reg update_forced, accept_path_next, reject_path_next, path_too_big, state_ctr_frozen, path_end_reached, searching_node, node_found, node_found_next, searching_node_next, node_ready, node_ready_next;
@@ -294,11 +325,12 @@ always_ff @ (posedge clk) mpc_round_0           <= (mpc_round_aes == 'h0);
 always_ff @ (posedge clk) sub_round_0           <= (mpc_round_aes == 'h0) && four_counter=='h0;
 always_ff @ (posedge clk) party_idx_0           <= (party_idx_aes == 'h0);
 always_ff @ (posedge clk) party_idx_is_i_star   <= (party_idx_aes == i_star_mem_dout);
-always_ff @ (posedge clk) share_split_done      <= last_party_idx && mpc_round_aes[$clog2(TAU)-1] && four_counter=='h3;
+always_ff @ (posedge clk) share_split_done      <= last_party_idx && (mpc_round_aes==TAU-1) && four_counter=='h3;
 always_ff @ (posedge clk) state_is_not_s_done_reg <= (state_aes!=S_DONE);
 always_ff @ (posedge clk) done_train <= rst ? 'h0 : {done_train, state_aes==S_DONE};
 always_ff @ (posedge clk) a_mid_valid_to_a_wrap <= a_mid_valid_to_a_wrap_next;
-always_ff @ (posedge clk) v_bit_mem_dout_pip <= v_bit_mem_dout;
+//always_ff @ (posedge clk) v_bit_mem_dout_pip <= v_bit_mem_dout;
+always_ff @ (posedge clk) v_bit_mem_dout_pip_train <= {v_bit_mem_dout_pip_train, v_bit_mem_dout};
 
 always_ff @ (posedge clk) begin
     if (rst)
@@ -310,7 +342,7 @@ end
 always_ff @ (posedge clk) share_split_done_out  <= rst ? 1'b0 : (((state_aes==S_WAIT_I_STAR) && ~verify) || done_train[4]);
 
 always_ff @ (posedge clk) part_list_dout_is_node_idx <= (partial_list_mem_dout == node_index_p1_aes);
-always_ff @ (posedge clk) ances_state_next_data_mem_addr <= (aes_ready_train[4] || first_cycles_train[4]);
+always_ff @ (posedge clk) ances_state_next_data_mem_addr <= (aes_ready_train[1+(`COMMIT_WORDS)] || first_cycles_train[1+(`COMMIT_WORDS)]); // Note
 
 always_ff @ (posedge clk) begin
     party_idx_prev_MSB_1C <= party_idx_aes[$clog2(`N)-1];
@@ -346,8 +378,9 @@ end
 always_ff @ (posedge clk) if (state_aes==S_COPY_NODES_0) ordered_list_idx_offset <= path_pos;
 
 always_ff @ (posedge clk) init_mpc_round <= init_mpc_round_next;
-always_ff @ (posedge clk) if (aes_comm_next_pip_2) v_bit_mem_dout_prev_2 <= v_bit_mem_dout_prev;
-always_ff @ (posedge clk) if (aes_comm_next_pip_2) v_bit_mem_dout_prev   <= v_bit_mem_dout;
+//always_ff @ (posedge clk) if (aes_comm_next_pip_2) v_bit_mem_dout_prev_2 <= v_bit_mem_dout_prev;
+always_ff @ (posedge clk) if (aes_comm_next_pip_4) v_bit_mem_dout_prev_2 <= v_bit_mem_dout_prev;
+always_ff @ (posedge clk) if (aes_comm_next_pip_8) v_bit_mem_dout_prev   <= v_bit_mem_dout_pip_train[5];
 
 always_ff @ (posedge clk) node_idx_is_target <= node_index_p1_aes[$clog2(`TREE_NODES)-1:1]==target_node_idx[$clog2(`TREE_NODES)-1:1]
                                              || node_index_p1_aes[$clog2(`TREE_NODES)-1:1]==(target_node_idx[$clog2(`TREE_NODES)-1:1]+1'b1); 
@@ -355,9 +388,13 @@ always_ff @ (posedge clk) node_idx_is_target <= node_index_p1_aes[$clog2(`TREE_N
 
 always_ff @ (posedge clk) node_idx_is_target_pip<= node_idx_is_target;
 
-always_ff @ (posedge clk) if (aes_core_ready_in_2) node_idx_is_target_delayed <= node_idx_is_target;
+//always_ff @ (posedge clk) if (aes_core_ready_in_2) node_idx_is_target_delayed <= node_idx_is_target;
+always_ff @ (posedge clk) if (aes_core_ready_in_3) node_idx_is_target_delayed <= node_idx_is_target_pip;
 
 always_ff @ (posedge clk) begin
+    if (state_aes==S_FILL_SIBL_PATH_1_STORE)
+        four_counter_bit_sel_sibl_path_1  <= four_counter_bit_sel;
+        
     four_counter_bit_sel_pip_3 <= four_counter_bit_sel_pip_2;
     four_counter_bit_sel_pip_2 <= four_counter_bit_sel_pip;
     four_counter_bit_sel_pip   <= four_counter_bit_sel;
@@ -381,17 +418,19 @@ always_ff @ (posedge clk) v_bit_mem_wren_1 <= v_bit_mem_wren_next_1;
 always_ff @ (posedge clk) v_bit_mem_din_0  <= v_bit_mem_din_next_0;
 always_ff @ (posedge clk) v_bit_mem_din_1  <= v_bit_mem_din_next_1;
 
-always_ff @ (posedge clk) path_too_big <= (path_len>`T_OPEN_LIMIT);
+//always_ff @ (posedge clk) path_too_big <= (path_len>`T_OPEN_LIMIT);
 always_ff @ (posedge clk) accept_path <= accept_path_next;
 always_ff @ (posedge clk) reject_path <= reject_path_next;
 always_ff @ (posedge clk) state_ctr_frozen <= (state_ctr_opc==ST_CTR_COUNT_FREEZE);
 
 always_ff @ (posedge clk) begin
-    direct_move_to_next_expand <= (four_counter[0]==mpc_round_aes[0]);
+//    direct_move_to_next_expand <= (four_counter[0]==mpc_round_aes[0]);
+    direct_move_to_next_expand <= (mpc_round_aes[0]);
     four_counter_max <= (four_counter=='h3);
     
     if (aes_core_ready_in_1)
-        goto_prep_GGM <= ~direct_move_to_next_expand && last_party_idx;
+//        goto_prep_GGM <= ~direct_move_to_next_expand && last_party_idx;
+        goto_prep_GGM <= mpc_round_aes[0] && last_party_idx;
     
     if (rst)
         four_counter <= 2'h0;
@@ -403,16 +442,19 @@ always_ff @ (posedge clk) begin
         four_counter <= 2'h0;
 end
 
-always_ff @ (posedge clk) sample_source <= (verify && prev_state_aes==S_EXPAND && party_idx_is_i_star); // Always AES for now
+always_ff @ (posedge clk) if (~sample_valid) sample_source <= (verify && prev_state_aes==S_EXPAND && party_idx_is_i_star);
+
 always_ff @ (posedge clk) begin
     incr_ks_mem_addr_s_expand <= ((state_aes==S_EXPAND     && aes_core_ready_in_1)
-                              || (prev_state_aes==S_EXPAND && |aes_ready_train[2:0]));
+                              || (prev_state_aes==S_EXPAND && |aes_ready_train[0 +:(`COMMIT_WORDS-1)]));
+//                              || (prev_state_aes==S_EXPAND && |aes_ready_train[2:0]));
     
     if  (rst)
         sample_valid  <= 1'b0;
     else
-        sample_valid  <=    (prev_state_aes==S_EXPAND || prev_state_aes==S_EXPAND_BRIDGE)
-                         && (|aes_ready_train[1:0] || (|aes_ready_train[3:2] && ctr!=((NUM_EXPANDS+1)/2)));
+        sample_valid  <= (prev_state_aes==S_EXPAND) && |aes_ready_train[0+:`COMMIT_WORDS];
+//        sample_valid  <=    (prev_state_aes==S_EXPAND || prev_state_aes==S_EXPAND_BRIDGE)
+//                         && (|aes_ready_train[1:0] || (|aes_ready_train[3:2] && ctr!=((NUM_EXPANDS+1)/2)));
     
     commit_valid <= (prev_state_aes==S_COMMIT || prev_state_aes==S_COMMIT_PREP_GGM) && aes_ready_train[4];
     party_is_i_star_out <= party_idx_is_i_star;
@@ -427,6 +469,7 @@ always_ff @ (posedge clk) store_res     <= aes_core_ready_in_1;
 always_ff @ (posedge clk) begin
     hold_aes_core_ready <= hold_aes_core_ready_next;
     
+    aes_core_ready_in_4 <= rst ? 1'b0 : aes_core_ready_in_5;
     aes_core_ready_in_3 <= rst ? 1'b0 : aes_core_ready_in_4;
     aes_core_ready_in_2 <= rst ? 1'b0 : aes_core_ready_in_3;
     
@@ -452,13 +495,13 @@ always_ff @ (posedge clk) rst_idx_S_CLEAN       <= (state_aes!=S_CLEAN_V_MEM);
 always_ff @ (posedge clk) if (update_state) party_idx_old_MSB <= party_idx_aes[$clog2(`N)-1];
 always_ff @ (posedge clk) new_round <= party_idx_old_MSB && !party_idx_aes[$clog2(`N)-1]; // When party_idx MSB flips -> round changes
 
-always_ff @ (posedge clk) next_sub_phase <= /*direct_move_to_next_expand &&*/ mpc_round_aes[$clog2(TAU)-1] && last_party_idx;
+always_ff @ (posedge clk) next_sub_phase <= /*direct_move_to_next_expand &&*/ (mpc_round_aes==TAU-1) && last_party_idx;
 
 //always_ff @ (posedge clk) if (aes_core_ready_in_1) party_idx_aes_prev <= party_idx_aes;
 always_ff @ (posedge clk) party_idx_aes_prev <= party_idx_aes-'h4;
 
 always_ff @ (posedge clk) aes_ready_train         <= aes_core_ready_in_1 ? 'h1 : {aes_ready_train, 1'b0};
-always_ff @ (posedge clk) state_ctr_timeout_train <= {state_ctr_timeout_train, state_ctr_timeout};
+always_ff @ (posedge clk) state_ctr_timeout_train <= state_ctr_timeout ? 'h1 : {state_ctr_timeout_train, 1'b0};
 
 always_ff @ (posedge clk) node_in_storage       <= (node_index_p1_aes < (`TREE_LEAVES/(1<<(`LEVEL_K-1)))); // L1 threshold for K==4 -> 'd2176
 always_ff @ (posedge clk) phi_i                 <= party_idx_aes ^ ((verify && ~party_idx_is_i_star) ? i_star_mem_dout : 'h0);
@@ -478,11 +521,13 @@ always_ff @ (posedge clk) next_verify_round  <= verify && (((state_aes==S_COMMIT
                                         || (rst_idx_S_CLEAN && state_aes==S_CLEAN_V_MEM) || (state_is_not_s_done_reg && state_aes==S_DONE));
 
 always_ff @ (posedge clk) begin
-//    v_mem_clean_exit <= (node_index_p1_aes==v_mem_clean_stop_idx);
+//    v_mem_clean_exit <= (node_index_p1_aes[$bits(node_index_p1_aes)-1:1]==v_mem_clean_stop_idx[$bits(v_mem_clean_stop_idx)-1:1]); // Note: gives a small speed-up but needs debugging
     v_mem_clean_exit <= (node_index_p1_aes==`TREE_NODES-1);
 
 //    if (rst)
-//        v_mem_clean_stop_idx <= `TREE_NODES-1; // TODO: decide if I want to optimize for cycle count OR simply make it a constant
+//        v_mem_clean_stop_idx <= `TREE_NODES-1; // TODO: decide to optimize for cycle count OR simply make it a constant
+//    else if (state_aes==S_WAIT_I_STAR || (state_aes==S_GET_SIBL_PATH && v_mem_clean_stop_idx < node_index_p1_aes))
+//        v_mem_clean_stop_idx <= node_index_p1_aes;
 end
 
 always_ff @ (posedge clk) begin
@@ -502,6 +547,12 @@ always @ (posedge clk) begin
         aes_comm_next         <= aes_comm_init_pip;
         aes_comm_next_pip     <= aes_comm_next;
         aes_comm_next_pip_2   <= aes_comm_next_pip;
+        aes_comm_next_pip_3   <= aes_comm_next_pip_2;
+        aes_comm_next_pip_4   <= aes_comm_next_pip_3;
+        aes_comm_next_pip_5   <= aes_comm_next_pip_4;
+        aes_comm_next_pip_6   <= aes_comm_next_pip_5;
+        aes_comm_next_pip_7   <= aes_comm_next_pip_6;
+        aes_comm_next_pip_8   <= aes_comm_next_pip_7;
 end
 
 always_ff @ (posedge clk) begin // update path_len
@@ -556,8 +607,8 @@ end
 always_ff @ (posedge clk) begin
     case (targ_node_idx_opc) // TARG_N_IDX_FREEZE, TARG_N_IDX_GOTO_LEAF, TARG_N_IDX_GOTO_NODE_IDX_P1
     TARG_N_IDX_FREEZE:      target_node_idx <= target_node_idx;
-    
-    TARG_N_IDX_GOTO_LEAF:   target_node_idx <= mpc_round_aes + party_idx_aes + {party_idx_aes, 4'b0} + TREE_LEAVES;
+                                                                // Note: +party_idx_aes*TAU
+    TARG_N_IDX_GOTO_LEAF:   target_node_idx <= mpc_round_aes + {party_idx_aes, 2'b0} + {party_idx_aes, 5'b0} + TREE_LEAVES;
     
     TARG_N_IDX_GOTO_NODE_IDX_P1: target_node_idx <= node_index_p1_aes;
     endcase
@@ -596,8 +647,14 @@ always @ (posedge clk) begin // mpc_round & buff_idx update
     end else if (init_mpc_round) begin
         mpc_round_aes <= (mpc_round_aes==TAU-1'b1) ? 'h0 : (mpc_round_aes+1'b1);
         buff_idx <= ~buff_idx;
-    end else if (rst_mpc_round)
+        
+    end else if (rst_mpc_round) begin
         mpc_round_aes <= 'h0;
+        buff_idx <= 1'b0;
+    end
+        
+    if (init_mpc_round)
+        mpc_round_aes_get_sibl_path <= mpc_round_aes;
         
     if (aes_ready_train[1])
         mpc_round_aes_prev <= mpc_round_aes;
@@ -628,13 +685,13 @@ always_ff @ (posedge clk) begin // update data_mem_addr
         
         GOTO_STORAGE:   data_mem_addr <= {node_index_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
 //        GOTO_STORAGE_FROM_CHILD_IDX:   data_mem_addr <= {parent_idx_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
-        GOTO_GR_GP:     data_mem_addr <= ((`K_EXIT_IDX<<2) + 6) + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
+        GOTO_GR_GP:     data_mem_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
         
-        GOTO_GRANDPA:   data_mem_addr <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_GRANDPA:   data_mem_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_PARENT:    data_mem_addr <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_PARENT:    data_mem_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_LEAF:      data_mem_addr <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
+        GOTO_LEAF:      data_mem_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
 //        GOTO_PREV_LEAF: data_mem_addr <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
         PLUS_1_D_M:     data_mem_addr <= data_mem_addr +1'b1;
 //        NEXT_BUFF:      data_mem_addr <= buff_idx ? (data_mem_addr-2'h3) : (data_mem_addr+1'h1);  // Note: Can merge with the one below?
@@ -649,15 +706,16 @@ always_ff @ (posedge clk) begin // update data_mem_wr_addr
         
         GOTO_STORAGE_WR:   data_mem_wr_addr <= {node_index_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
 //        GOTO_STORAGE_FROM_CHILD_IDX_WR:   data_mem_wr_addr <= {parent_idx_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
-        GOTO_GR_GP_WR:     data_mem_wr_addr <= ((`K_EXIT_IDX<<2) + 6) + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
+        GOTO_GR_GP_WR:     data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
         
-        GOTO_GRANDPA_WR:   data_mem_wr_addr <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_GRANDPA_WR:   data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_PARENT_WR:    data_mem_wr_addr <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_PARENT_WR:    data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_LEAF_WR:      data_mem_wr_addr <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
+        GOTO_LEAF_WR:      data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
         
-        GOTO_PREV_LEAF_WR: data_mem_wr_addr <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
+//        GOTO_PREV_LEAF_WR: data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
+        GOTO_PREV_LEAF_WR: data_mem_wr_addr <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + 0), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
         
         PLUS_1_D_M_WR:     data_mem_wr_addr <= data_mem_wr_addr +1'b1;
         
@@ -668,15 +726,16 @@ always_ff @ (posedge clk) begin // update data_mem_wr_addr
         
         GOTO_STORAGE_WR:   data_mem_wr_addr_2 <= {node_index_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
 //        GOTO_STORAGE_FROM_CHILD_IDX_WR:   data_mem_wr_addr <= {parent_idx_aes, {$clog2(`NODE_WORDS){1'b0}}}; // Go to permanent storage for current idx
-        GOTO_GR_GP_WR:     data_mem_wr_addr_2 <= ((`K_EXIT_IDX<<2) + 6) + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
+        GOTO_GR_GP_WR:     data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {party_idx_aes[$clog2(`N)-1:2], {$clog2(`NODE_WORDS){1'b0}}}; // Go to the runtime storage for the current party idx
         
-        GOTO_GRANDPA_WR:   data_mem_wr_addr_2 <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_GRANDPA_WR:   data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/4), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_PARENT_WR:    data_mem_wr_addr_2 <= ((`K_EXIT_IDX<<2) + 6) + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
+        GOTO_PARENT_WR:    data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {(party_idx_aes[$clog2(`N)-1:2] + N/2), {$clog2(`NODE_WORDS){1'b0}}};
         
-        GOTO_LEAF_WR:      data_mem_wr_addr_2 <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
+        GOTO_LEAF_WR:      data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; 
         
-        GOTO_PREV_LEAF_WR: data_mem_wr_addr_2 <= ((`K_EXIT_IDX<<2) + 6) + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
+//        GOTO_PREV_LEAF_WR: data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + buff_idx), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
+        GOTO_PREV_LEAF_WR: data_mem_wr_addr_2 <= `DATA_MEM_ADDR_OPC_OFFSET + {((party_idx_aes_prev[$clog2(`N)-1:2]<<1) + (3*N/4) + 0), {$clog2(`NODE_WORDS){1'b0}}}; // Note: uses party_idx_prev since the current one is a bit ahead
         
         PLUS_1_D_M_WR:     data_mem_wr_addr_2 <= data_mem_wr_addr_2 +1'b1;
         
@@ -695,11 +754,13 @@ always_ff @ (posedge clk) begin // update key_sig_mem_addr
         
         GOTO_PATH_POS:          key_sig_mem_addr <= {path_pos, {$clog2(`NODE_WORDS){1'b0}}} + `SIBL_PATH_ADDR;
         
-        GOTO_COMMIT_STORAGE:    key_sig_mem_addr <= (`KEY_SIG_MEM_COMMIT_ADDR+(mpc_round_aes_prev<<2));
+        GOTO_COMMIT_STORAGE:    key_sig_mem_addr <= (`KEY_SIG_MEM_COMMIT_ADDR+(mpc_round_aes_prev<<3));
         
-        GOTO_ACC_STORAGE:       key_sig_mem_addr <= (`KEY_SIG_MEM_ACC_ADDR + (mpc_round_aes<<3));
+//        GOTO_ACC_STORAGE:       key_sig_mem_addr <= (`KEY_SIG_MEM_ACC_ADDR + (mpc_round_aes<<3) + (mpc_round_aes<<2));
+        GOTO_ACC_STORAGE:       key_sig_mem_addr <= (`KEY_SIG_MEM_ACC_ADDR + (mpc_round_aes_prev<<3) + (mpc_round_aes_prev<<2));
         
-        GOTO_ALPHA_MID:         key_sig_mem_addr <= (`ALPHA_MID_0_ADDR + (mpc_round_aes<<2)); // +2*`M_PARAM_RHO * mpc_round
+//        GOTO_ALPHA_MID:         key_sig_mem_addr <= (`ALPHA_MID_0_ADDR + (mpc_round_aes<<3)); // +2*`M_PARAM_RHO * mpc_round
+        GOTO_ALPHA_MID:         key_sig_mem_addr <= (`ALPHA_MID_0_ADDR + (mpc_round_aes_prev<<3)); // +2*`M_PARAM_RHO * mpc_round
     endcase
 end
 
@@ -720,7 +781,7 @@ always_comb begin
     
     store_res_next = 1'b0;
     node_idx_opc = N_IDX_FREEZE;
-    node_idx_sh_left_lsb_next = 1'b0;
+    node_idx_sh_left_lsb_next = 1'b0; // Note: pointless?
     
     mode_aes_next = MODE_GGM;
     
@@ -779,6 +840,7 @@ always_comb begin
     case (state_aes)
         S_IDLE: begin
             force_state_update_next = state_ctr_timeout;
+            state_ctr_rst_val       = ST_CTR_RST_VAL_MEDIUM;
             
             if (start_en) begin
                 state_ctr_opc = ST_CTR_COUNT_RST;
@@ -787,7 +849,6 @@ always_comb begin
         
 // ************************************************************************** 
         S_LOAD_SALT: begin
-            state_ctr_rst_val       = ST_CTR_RST_VAL_SMALL;
             force_state_update_next = state_ctr_timeout;
             load_seed_next          = ~update_state;
             load_salt_next          = ~update_state;
@@ -817,20 +878,12 @@ always_comb begin
                 node_idx_opc = N_IDX_ADD_2;
             end
                 
-            if (verify && v_bit_mem_dout_prev_2) begin // Verification only
-//                if (|aes_ready_train[6:5])
-//                    node_idx_opc = N_IDX_SUB_1;
-                
+            if (verify && v_bit_mem_dout_prev_2) begin // Verification only. Note: verify can be a rst sig for v_bit_mem_dout_prev
                 if (aes_ready_train[7]) begin
                     v_bit_mem_wren_next_0 = 1'b1;
                     v_bit_mem_wren_next_1 = 1'b1;
                     v_bit_mem_din_next_0  = 1'b1;
                     v_bit_mem_din_next_1  = 1'b1;
-//                    node_idx_opc = N_IDX_SH_LEFT;
-//                end else if (aes_ready_train[8]) begin
-//                    node_idx_opc = N_IDX_SH_RIGHT;
-//                end else if (aes_ready_train[9]) begin
-//                    node_idx_opc = N_IDX_ADD_2;
                 end
             end
             
@@ -842,13 +895,13 @@ always_comb begin
                 data_mem_wr_addr_opc = GOTO_PREV_NODE_LEFT_CHILD_STORAGE_WR; // Go to store address
             end
             
-            if (aes_ready_train[5]) begin
+            if (aes_ready_train[6]) begin
                 data_mem_addr_opc = GOTO_STORAGE;
-            end else if (aes_ready_train[6]) begin
+            end else if (|aes_ready_train[7 +: (`COMMIT_WORDS/2-1)]) begin
                 data_mem_addr_opc = PLUS_1_D_M;
             end
             
-            if (|aes_ready_train[7:6]) begin
+            if (|aes_ready_train[7 +: (`COMMIT_WORDS/2)]) begin
                 load_seed_next = 1'b1;
             end
             
@@ -961,7 +1014,10 @@ always_comb begin
         S_EXPAND: begin
             mode_aes_next = MODE_EXP_LEAF; // update_mode
             
-            if (aes_core_ready_in_1)
+//            if (aes_ready_train[0] && prev_state==S_SEARCH_NEXT_NODE)
+//                key_sig_mem_addr_opc = GOTO_ACC_STORAGE;
+            
+            if (aes_core_ready_in_1) // Note: can delete?
                 node_idx_opc  = N_IDX_ADD_1;
             else
                 node_idx_opc  = N_IDX_GOTO_TARG_NODE;
@@ -972,14 +1028,15 @@ always_comb begin
                 store_res_next          = 1'b1;
             end
             if (prev_state_aes!=S_EXPAND) begin
-                if (aes_core_ready_in_3) begin
-                    key_sig_mem_addr_opc    = GOTO_ALPHA_MID;
-                    if (verify)
-                        a_mid_valid_to_a_wrap_next = 1'b1;
-                end
-                else if (aes_core_ready_in_2)
-                    key_sig_mem_addr_opc    = PLUS_1_KS_M;
-                else if (aes_core_ready_in_1)
+//                if (aes_core_ready_in_5) begin
+//                    key_sig_mem_addr_opc    = GOTO_ALPHA_MID;
+//                    if (verify)
+//                        a_mid_valid_to_a_wrap_next = 1'b1;
+//                end
+//                else if (aes_core_ready_in_2 || aes_core_ready_in_3 || aes_core_ready_in_4) // Note: re-order
+//                    key_sig_mem_addr_opc    = PLUS_1_KS_M;
+//                else 
+                if (aes_core_ready_in_1)
                     key_sig_mem_addr_opc    = GOTO_ACC_STORAGE;
             end
         end
@@ -1003,12 +1060,12 @@ always_comb begin
             
             if (aes_ready_train[5])
                 data_mem_addr_opc = GOTO_LEAF;
-            else if (aes_ready_train[6])
+            else if (aes_ready_train[6 +: (`COMMIT_WORDS/2-1)])
                 data_mem_addr_opc = PLUS_1_D_M;
 //            else if (aes_ready_train[7])
 //                data_mem_addr_opc = GOTO_COMMIT_BUFF;
             
-            if (|aes_ready_train[7:6])
+            if (|aes_ready_train[6 +: (`COMMIT_WORDS/2)])
                 load_seed_next=1;
             
             if (aes_core_ready_in_1) begin
@@ -1076,12 +1133,12 @@ always_comb begin
                     data_mem_addr_opc = GOTO_STORAGE;
             end // Find-where-to-go-next if-else
             
-            if (aes_ready_train[11]) // Time to store
+            if (|aes_ready_train[11 +: (`COMMIT_WORDS/2-1)]) // Time to store
                 data_mem_addr_opc = PLUS_1_D_M;
 //            else if (aes_ready_train[12])
 //                data_mem_addr_opc = GOTO_COMMIT_BUFF;
                     
-            if (|aes_ready_train[12:11])
+            if (|aes_ready_train[11 +: (`COMMIT_WORDS/2)])
                     load_seed_next=1;
         end // S_COMMIT_PREP_GGM
 
@@ -1142,7 +1199,7 @@ always_comb begin
                     data_mem_addr_opc = GOTO_LEAF;                    
              end
             
-            if (aes_ready_train[11]) // Time to store
+            if (aes_ready_train[11 +: (`COMMIT_WORDS/2-1)])
                 data_mem_addr_opc = PLUS_1_D_M;
 //            else if (aes_ready_train[12])
 //                data_mem_addr_opc = GOTO_PREV_LEAF;
@@ -1152,7 +1209,7 @@ always_comb begin
             if (aes_ready_train[12])
                 data_mem_wr_addr_opc = GOTO_PREV_LEAF_WR;
 
-            if (|aes_ready_train[12:11])
+            if (|aes_ready_train[11 +: (`COMMIT_WORDS/2)])
                     load_seed_next=1;
         end // S_EXP_PARENT
         
@@ -1206,7 +1263,7 @@ always_comb begin
             
             if (state_ctr_timeout_train[0]) begin
                  node_idx_opc            = N_IDX_SH_RIGHT; // Gets overwritten anyway on exit.
-                if (v_bit_mem_dout_pip || node_idx_sub_lvl_2) begin
+                if (v_bit_mem_dout_pip_train[0] || node_idx_sub_lvl_2) begin
 //                    node_idx_opc            = N_IDX_GOTO_TARG_NODE; // Go to next hidden leaf
                     init_mpc_round_next     = 1'b1;
                     force_state_update_next = mpc_round_0;
@@ -1219,10 +1276,15 @@ always_comb begin
                 node_idx_opc    = N_IDX_GOTO_TARG_NODE; // Go to next hidden leaf
             end
             
+            if (path_len_reject_lookahead && !update_forced)
+                force_state_update_next = 1'b1;
+            
             if (update_state) begin // Signal path_len evaluation result to the top-level FSM
                 node_idx_opc    = N_IDX_RST;
+                rst_mpc_round_next = 1'b1;
                 
-                if (path_too_big)
+//                if (path_too_big)
+                if (path_len_reject_lookahead)
                     reject_path_next = 1'b1;
                 else
                     accept_path_next = 1'b1;
@@ -1236,7 +1298,7 @@ always_comb begin
             
             if (state_ctr_timeout) begin
                 data_mem_addr_opc    = GOTO_STORAGE;
-                if (v_bit_mem_dout_pip) begin
+                if (v_bit_mem_dout_pip_train[0]) begin
 //                    data_mem_addr_opc    = GOTO_STORAGE;
                     state_ctr_opc        = ST_CTR_COUNT_FREEZE;
                 end else
@@ -1247,23 +1309,34 @@ always_comb begin
                     state_ctr_opc        = ST_CTR_COUNT_FREEZE;
                     data_mem_addr_opc    = PLUS_1_D_M;
                 end
-//                else
-//                    force_state_update_next = ~node_in_storage; // Move to S_FILL_SIBL_PATH_1_SEARCH.
             end else if (state_ctr_timeout_train[1]) begin
                 if (state_ctr_frozen) begin
 //                    key_sig_mem_addr_opc = PLUS_1_KS_M;
+                    data_mem_addr_opc    = PLUS_1_D_M;
                     state_ctr_opc        = ST_CTR_COUNT_FREEZE;
-                    path_pos_opc         = PATH_POS_ADD_1;
                     key_sig_mem_addr_opc = GOTO_PATH_POS;
                     wren_key_sig_mem_next= 1'b1;
-                    node_idx_opc = N_IDX_ADD_1; // Go to next node_idx
                 end
             end else if (state_ctr_timeout_train[2]) begin
+                if (state_ctr_frozen) begin
+                    data_mem_addr_opc    = PLUS_1_D_M;
+                    key_sig_mem_addr_opc = PLUS_1_KS_M;
+                    wren_key_sig_mem_next= 1'b1;
+                    state_ctr_opc        = ST_CTR_COUNT_FREEZE;
+                end
+            end else if (state_ctr_timeout_train[3]) begin
+                if (state_ctr_frozen) begin
+                    key_sig_mem_addr_opc = PLUS_1_KS_M;
+                    wren_key_sig_mem_next= 1'b1;
+                    state_ctr_opc        = ST_CTR_COUNT_FREEZE;
+                    node_idx_opc = N_IDX_ADD_1; // Go to next node_idx
+                    path_pos_opc         = PATH_POS_ADD_1;
+                end
+            end else if (state_ctr_timeout_train[4]) begin
                 if (state_ctr_frozen) begin
                     key_sig_mem_addr_opc = PLUS_1_KS_M;
                     wren_key_sig_mem_next= 1'b1;
                     state_ctr_opc        = ST_CTR_COUNT_RST;
-//                    force_state_update_next = ~node_in_storage; // Move to S_FILL_SIBL_PATH_1_SEARCH: not 100% verified for correctness
                 end
             end
             
@@ -1282,15 +1355,14 @@ always_comb begin
             
             if (state_ctr_timeout) begin
                 if (~searching_node) begin
-                    if (v_bit_mem_dout_pip) begin
+                    if (v_bit_mem_dout_pip_train[0]) begin
                         targ_node_idx_opc    = TARG_N_IDX_GOTO_NODE_IDX_P1;
-                        node_idx_opc         = N_IDX_SH_RIGHT;
+//                        node_idx_opc         = N_IDX_SH_RIGHT;
                         searching_node_next  = 1'b1;
                     end else begin
                         node_idx_opc    = N_IDX_ADD_1; // Go to next node_idx
                     end
-//                end else if (~node_found)   begin // Note: Can probably remove node_found
-                end else begin
+                end else if (~node_found)   begin // Note: Can probably remove node_found
                     if (node_in_storage) begin
                         force_state_update_next = 1'b1;
                         node_found_next         = 1'b1;
@@ -1302,11 +1374,12 @@ always_comb begin
                 end 
             end   
             
-            // Store res of S_FILL_SIBL_PATH_1_STORE: key_sig_mem_addr_opc = PLUS_1_KS_M;
-            if ((|aes_ready_train[2:1] && ~four_counter_bit_sel) || (|aes_ready_train[4:3] && four_counter_bit_sel)) begin
-                wren_key_sig_mem_next= 1'b1;
-                key_sig_mem_addr_opc = PLUS_1_KS_M;
-            end
+            // Store res of S_FILL_SIBL_PATH_1_STORE:
+//            if ((|aes_ready_train[1+:(`COMMIT_WORDS/2)] && ~four_counter_bit_sel) || (|aes_ready_train[1+(`COMMIT_WORDS/2)+:(`COMMIT_WORDS/2)] && four_counter_bit_sel)) begin
+//            if ((|aes_ready_train[1+:(`COMMIT_WORDS/2)] && ~four_counter_bit_sel_sibl_path_1) || (|aes_ready_train[1+(`COMMIT_WORDS/2)+:(`COMMIT_WORDS/2)] && four_counter_bit_sel_sibl_path_1)) begin // Note: pretty large expression -> Can be pipelined
+//                wren_key_sig_mem_next= 1'b1;
+//                key_sig_mem_addr_opc = PLUS_1_KS_M;
+//            end
                    
         end // S_FILL_SIBL_PATH_1_SEARCH
  
@@ -1320,24 +1393,27 @@ always_comb begin
             node_found_next     = 1'b0;
             data_mem_addr_opc   = PLUS_1_D_M;
             
-            if (first_cycles_train[0]) begin
+            if (first_cycles_train[0])
                 path_pos_opc        = PATH_POS_ADD_1;
-//                data_mem_addr_opc   = PLUS_1_D_M;
+            
+            if (first_cycles_train[0 +: (`COMMIT_WORDS/2)]) begin
                 load_seed_next      = 1'b1;
-            end else if (first_cycles_train[1]) begin
-                load_seed_next      = 1'b1;
-            end else if (first_cycles_train[2]) begin
-                aes_init_next       = 1'b1;
             end
+            
+            if (first_cycles_train[0 + (`COMMIT_WORDS/2)])
+                aes_init_next = 1'b1;
             
             node_idx_sh_left_lsb_next = four_counter_bit_sel;
             
-            if (first_cycles_train[5]) begin
+            if (first_cycles_train[4 + (`COMMIT_WORDS/2)]) begin
                 node_idx_opc        = N_IDX_SH_LEFT;
             end 
 //            else if (first_cycles_train[6] && four_counter_bit_sel) begin
 //                node_idx_opc        = N_IDX_ADD_1;
 //            end
+            
+            if (aes_comm_init)
+                four_counter_decr = 1'b1;
             
             if (aes_core_ready_in_1) begin
                 aes_init_next           = ~node_idx_is_target;
@@ -1353,9 +1429,9 @@ always_comb begin
                     node_idx_opc        = N_IDX_ADD_1;
             end
             
-            if (aes_ready_train[0]) begin
-                four_counter_decr       = 1'b1;
-            end 
+//            if (aes_ready_train[0]) begin
+//                four_counter_decr       = 1'b1;
+//            end 
             
             if (aes_ready_train[3]) begin
                 node_idx_opc            = N_IDX_SH_LEFT;
@@ -1382,22 +1458,24 @@ always_comb begin
                 if (|aes_ready_train[5:3])
                     four_counter_incr = 1'b1;
                     
-                if (aes_ready_train[9])
+                if (aes_ready_train[9+:(`COMMIT_WORDS/2-1)])
                     data_mem_addr_opc = PLUS_1_D_M;
                     
-                if (|aes_ready_train[10:9])
+                if (|aes_ready_train[9+:(`COMMIT_WORDS/2)])
                     load_seed_next = 1'b1;
                 
-                if (aes_ready_train[10])
+                if (aes_ready_train[10+(`COMMIT_WORDS/2)])
                     aes_init_next = 1'b1;
             end
             
             node_idx_sh_left_lsb_next = four_counter_bit_sel;
             
             if (aes_core_ready_in_2) begin
+//            if (aes_core_ready_in_3) begin
                 node_idx_opc      = N_IDX_SH_LEFT;
                 
-                if (node_idx_is_target) // Note: This is a quick bugfix to compensate for an extra decr. There's a more optimal way to do this.
+//                if (node_idx_is_target) 
+                if (node_idx_is_target_pip) // Note: This is a quick bugfix to compensate for an extra decr. There's a more optimal way to do this.
                     four_counter_incr = 1'b1;
                 else
                     four_counter_decr = 1'b1;
@@ -1431,7 +1509,7 @@ always_comb begin
             force_state_update_next = ~|first_cycles_train[1:0] && ~node_in_storage && ~update_state; // Move to S_FILL_SIBL_PATH_1_SEARCH
             
             if (state_ctr_timeout) begin
-                if (v_bit_mem_dout_pip) begin
+                if (v_bit_mem_dout_pip_train[0]) begin
                     state_ctr_opc = ST_CTR_COUNT_FREEZE;
                 end else
                     node_idx_opc  = N_IDX_ADD_1; // Go to next node_idx
@@ -1441,33 +1519,43 @@ always_comb begin
                 
                 if (state_ctr_frozen) begin
                     state_ctr_opc        = ST_CTR_COUNT_FREEZE;
-//                    key_sig_mem_addr_opc = PLUS_1_KS_M;
                 end
-//                else
-//                    force_state_update_next = ~node_in_storage; // Move to S_FILL_SIBL_PATH_1_SEARCH.
             end else if (state_ctr_timeout_train[1]) begin
+                key_sig_mem_addr_opc = PLUS_1_KS_M;
                 data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+                if (state_ctr_frozen) begin
+                    state_ctr_opc        = ST_CTR_COUNT_FREEZE;
+                    wren_data_mem_next   = 1'b1;
+                end
+            end else if (state_ctr_timeout_train[2]) begin
+                key_sig_mem_addr_opc = PLUS_1_KS_M;
+                data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+                
+                if (state_ctr_frozen) begin
+                    wren_data_mem_next   = 1'b1;
+                    state_ctr_opc        = ST_CTR_COUNT_FREEZE;
+                end
+            end else if (state_ctr_timeout_train[3]) begin
+                data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+                
                 if (state_ctr_frozen) begin
                     state_ctr_opc        = ST_CTR_COUNT_FREEZE;
                     path_pos_opc         = PATH_POS_ADD_1;
                     wren_data_mem_next   = 1'b1;
                     node_idx_opc = N_IDX_ADD_1; // Go to next node_idx
                 end
-            end else if (state_ctr_timeout_train[2]) begin
-                key_sig_mem_addr_opc = PLUS_1_KS_M;
+            end else if (state_ctr_timeout_train[4]) begin
                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
                 
                 if (state_ctr_frozen) begin
-//                    key_sig_mem_addr_opc = PLUS_1_KS_M;
-//                    data_mem_addr_opc    = PLUS_1_D_M;
-//                    data_mem_wr_addr_opc = PLUS_1_D_M_WR;
                     wren_data_mem_next   = 1'b1;
                     state_ctr_opc        = ST_CTR_COUNT_RST;
-//                    force_state_update_next = ~node_in_storage; // Move to S_FILL_SIBL_PATH_1_SEARCH: not 100% verified for correctness
                 end
             end
             
-            if (|first_cycles_train[3:2]) // In the case that node_index_p1=='h2 is valid, this will load it to the seed registers. If not, we don't care about whatever is loaded at this point.
+            if (|first_cycles_train[2 +: (`COMMIT_WORDS/2)]) // In the case that node_index_p1=='h2 is valid, this will load it to the seed registers. If not, we don't care about whatever is loaded at this point.
                 load_seed_next = 1'b1;
             
             if (update_state)
@@ -1478,7 +1566,7 @@ always_comb begin
         S_COPY_NODES_1: begin
             if (state_ctr_timeout) begin
                 node_idx_opc  = N_IDX_ADD_1; // Go to next node_idx
-                if (v_bit_mem_dout_pip) begin
+                if (v_bit_mem_dout_pip_train[0]) begin
 //                    state_ctr_opc = ST_CTR_COUNT_FREEZE;
                     part_ord_list_wren  = 1'b1;
                     path_pos_opc        = PATH_POS_ADD_1;
@@ -1527,13 +1615,14 @@ always_comb begin
                 end
             end
             
-            if (|aes_ready_train[4:1] && v_bit_mem_dout_prev) begin
+//            if (|aes_ready_train[4:1] && v_bit_mem_dout_prev) begin
+            if (|aes_ready_train[1 +: `COMMIT_WORDS] && v_bit_mem_dout_prev) begin // Note: potential bug point
                 wren_data_mem_next = 1'b1;
             end
             
-            if (|aes_ready_train[4:2]) begin
+            if (|aes_ready_train[2 +: (`COMMIT_WORDS-1)]) begin
                 data_mem_addr_opc = PLUS_1_D_M;
-            end else if (aes_ready_train[5]) begin
+            end else if (2 + (`COMMIT_WORDS-1)) begin
                 data_mem_addr_opc = GOTO_STORAGE;
             end
 //            else if (aes_ready_train[6]) begin // Not needed here?
@@ -1546,7 +1635,7 @@ always_comb begin
             
             if (state_ctr_timeout) begin
                 force_state_update_next = exit_fake_expand;
-                if (v_bit_mem_dout_pip) begin
+                if (v_bit_mem_dout_pip_train[0]) begin
                         v_bit_mem_wren_next_0 = 1'b1;
                         v_bit_mem_wren_next_1 = 1'b1;
                         v_bit_mem_din_next_0  = 1'b1;
@@ -1585,6 +1674,8 @@ always_comb begin
             search_ctr_opc = SEARCH_CTR_INCR;
             hold_aes_core_ready_next = 1'b1;
             
+            node_idx_sh_left_lsb_next = target_node_idx[3];
+            
 //            if (mpc_round_0) begin
                 if (new_round) begin
                     case (search_ctr)
@@ -1598,17 +1689,17 @@ always_comb begin
                             data_mem_addr_opc = GOTO_LEAF;
                         end
                          
-                         ('h2+SEARCH_CTR_INIT_DELAY): begin
+                         ('h2+SEARCH_CTR_INIT_DELAY), ('h3+SEARCH_CTR_INIT_DELAY), ('h4+SEARCH_CTR_INIT_DELAY): begin
 //                            node_idx_opc      = N_IDX_ADD_1;
                             data_mem_addr_opc = PLUS_1_D_M;
                             load_seed_next    = 1'b1;
                          end
                          
-                         ('h3+SEARCH_CTR_INIT_DELAY): begin
+                         ('h5+SEARCH_CTR_INIT_DELAY): begin
                             load_seed_next          = 1'b1;
                          end
                          
-                         'hd: 
+                         'hf: 
                             force_state_update_next = 1'b1; // exit
                     endcase // search_ctr
                     
@@ -1658,37 +1749,51 @@ always_comb begin
                             data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
                         end
                         
-//                        ('h3 +SEARCH_CTR_INIT_DELAY): begin
-//                            path_pos_opc  = PATH_POS_SUB_1;
-//                            data_mem_wr_addr_opc = PLUS_1_D_M_WR;
-//                        end
-                        
                         ('h4 +SEARCH_CTR_INIT_DELAY): begin // We should have the correct path_pos
                             key_sig_mem_addr_opc = GOTO_PATH_POS;
+                            data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                            data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
                         end
                         
                         ('h5 +SEARCH_CTR_INIT_DELAY): begin
-//                            if (~consec_siblings_hidden_flag)
+//                            if (~consec_siblings_hidden_flag) // Note: Can remove the if check?
                                 key_sig_mem_addr_opc = PLUS_1_KS_M;
                             read_source_next = 1'b1;
+                            data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                            data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
                         end
                             
                         ('h6 +SEARCH_CTR_INIT_DELAY): begin
-//                            if (~consec_siblings_hidden_flag)
+//                            if (~consec_siblings_hidden_flag) // Note: Can remove the if check?
                                 wren_data_mem_next =1'b1;
+                            key_sig_mem_addr_opc = PLUS_1_KS_M;    
+                                
                             read_source_next = 1'b1;
                             data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
                         end
                         
                         ('h7 +SEARCH_CTR_INIT_DELAY): begin
-                            read_source_next = 1'b1; // Note: Can remove?
+                            read_source_next = 1'b1;
+                            key_sig_mem_addr_opc = PLUS_1_KS_M;
                             wren_data_mem_next = 1'b1;
-//                            data_mem_addr_opc = PLUS_1_D_M;
+                            data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                            data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+//                            force_state_update_next  = 1'b1;
+                        end
+
+                        ('h8 +SEARCH_CTR_INIT_DELAY): begin
+                            read_source_next = 1'b1;
+                            wren_data_mem_next = 1'b1;
+                            data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                            data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+//                            force_state_update_next  = 1'b1;
+                        end
+
+                        ('h9 +SEARCH_CTR_INIT_DELAY): begin
+                            wren_data_mem_next = 1'b1;
                             data_mem_wr_addr_opc = PLUS_1_D_M_WR;
                             force_state_update_next  = 1'b1;
-                        end
-                            
-                        
+                        end                
                     endcase // search_ctr
                 end else if (searching_node) begin
                     case (search_ctr)
@@ -1724,23 +1829,22 @@ always_comb begin
                         end
                     endcase //search_ctr
                     
-                end else if (~node_ready) begin
-//                end else begin
-                    data_mem_addr_opc = GOTO_STORAGE; // Here it should be fine
+                end else if (~node_ready) begin // Note: Can remove the (~node_ready) with up to a few changes
+                    data_mem_addr_opc = GOTO_STORAGE;
                     
                     if (gr_2_gp_rev) begin
                         case (search_ctr)
-                            ('h1): begin 
+                            ('h1),('h2),('h3): begin 
                                 data_mem_addr_opc = PLUS_1_D_M;
                                 load_seed_next = 1'b1;
                              end
                              
-                             ('h2): begin 
+                             ('h4): begin 
                                 load_seed_next = 1'b1;
                              end
                              
-                             ('h3): begin
-                                node_ready_next         = 1'b1;
+                             ('h5): begin
+                                node_ready_next = 1'b1;
                              end
                         endcase // search_ctr
                     end else begin
@@ -1749,42 +1853,39 @@ always_comb begin
                         data_mem_wr_addr_opc = GOTO_LEAF_WR; // Only for the case the revealed leaf is the sibling of a hidden leaf
                         data_mem_wr_addr_opc_next = GOTO_LEAF_WR; // Only for the case the revealed leaf is the sibling of a hidden leaf
                         case (search_ctr)
-                            ('h0): begin // Go to gr_gp
-                                node_idx_sh_left_lsb_next = target_node_idx[3];
-//                                node_idx_opc  = N_IDX_SH_LEFT;
-                            end
-                            ('h1): begin
+//                            ('h0): begin // Go to gr_gp
+//                                node_idx_sh_left_lsb_next = target_node_idx[3]; // Moved as default
+////                                node_idx_opc  = N_IDX_SH_LEFT;
+//                            end
+                            ('h0): begin
                                 node_idx_opc  = N_IDX_SH_LEFT;
                                 node_idx_sh_left_lsb_next = target_node_idx[2];
 //                                if (target_node_idx[3])
 //                                    node_idx_opc  = N_IDX_ADD_1;
                             end
-                            ('h2): begin // Go to gp
+                            ('h1): begin // Go to gp
                                 if (~gr_gp_rev)
                                     node_idx_opc  = N_IDX_SH_LEFT;
                             end
-                            ('h3): begin
+                            ('h2): begin
                                 node_idx_sh_left_lsb_next = target_node_idx[1];
 //                                if (~gr_gp_rev && target_node_idx[2])
 //                                    node_idx_opc  = N_IDX_ADD_1;
                             end
-                            ('h4): begin // Go to par
+                            ('h3): begin // Go to par
+                                node_idx_sh_left_lsb_next = target_node_idx[0];
                                 if (~gp_rev)
                                     node_idx_opc  = N_IDX_SH_LEFT;
                             end
-//                            ('h5): begin
-////                                if (~gp_rev && target_node_idx[1])
-////                                    node_idx_opc  = N_IDX_ADD_1;
-//                            end
-                            ('h5): begin // Go to leaf?
-                                if (~par_rev)
+                            
+                            ('h4): begin // Go to leaf?
+                                if (~par_rev) begin
                                     node_idx_opc  = N_IDX_SH_LEFT;
-                            end
-                            ('h6): begin
-                                if (~par_rev)// && target_node_idx[1])
                                     path_pos_opc  = PATH_POS_ADD_1;
+                                end
                             end
-                            ('h8): begin // We should have the correct node now
+                            
+                            ('h6): begin // We should have the correct node now
                                 if (part_list_dout_is_node_idx) begin
                                     search_ctr_opc = SEARCH_CTR_INCR;
                                     path_pos_opc  = PATH_POS_SUB_1;
@@ -1793,25 +1894,34 @@ always_comb begin
                                     path_pos_opc  = PATH_POS_ADD_1;
                                 end
                             end
-                            ('h9): path_pos_opc  = PATH_POS_SUB_1;
-                            ('ha): path_pos_opc  = PATH_POS_SUB_1;
+                            ('h7): path_pos_opc  = PATH_POS_SUB_1;
+                            ('h8): path_pos_opc  = PATH_POS_SUB_1;
                             
-                            ('hc): begin // We should have the correct path_pos
+//                            ('hc): begin // We should have the correct path_pos
+                            ('ha): begin // We should have the correct path_pos
                                 key_sig_mem_addr_opc = GOTO_PATH_POS;
                             end
-                            ('hd): begin
+                            ('hb): begin
                                 key_sig_mem_addr_opc = PLUS_1_KS_M;
                                 load_seed_next = 1'b1;
                             end
-                            ('he): begin 
+                            ('hc), ('hd): begin
+                                key_sig_mem_addr_opc = PLUS_1_KS_M;
                                 load_seed_next = 1'b1;
                                 data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
                                 if(~par_rev)
                                     wren_data_mem_next = 1'b1;
                             end
+                            
+                            ('he): begin 
+                                load_seed_next = 1'b1;
+                                data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
+                                data_mem_wr_addr_opc = PLUS_1_D_M_WR;
+                                if(~par_rev)
+                                    wren_data_mem_next = 1'b1;
+                            end
                             ('hf): begin
                                 node_ready_next= 1'b1;
-//                                data_mem_addr_opc = PLUS_1_D_M;
                                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
                                 if(~par_rev)
                                     wren_data_mem_next = 1'b1;
@@ -1861,45 +1971,46 @@ always_comb begin
 // **************************************************************************
     case(prev_state_aes)
         S_ARRAY_EXPAND: begin
-            if (|aes_ready_train[4:1] && (~verify || v_bit_mem_dout_prev)) begin
+            if (|aes_ready_train[1 +: `COMMIT_WORDS] && (~verify || v_bit_mem_dout_prev)) begin
                 wren_data_mem_next = 1'b1;
             end
             
 //            if (aes_ready_train[1])
 //                data_mem_wr_addr_opc = GOTO_PREV_NODE_LEFT_CHILD_STORAGE_WR;
 //            else
-            if (|aes_ready_train[4:2])
+            if (|aes_ready_train[2 +: (`COMMIT_WORDS-1)])
                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
-            if (|aes_ready_train[3:1])
+            if (|aes_ready_train[1 +: (`COMMIT_WORDS-1)])
                 data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
             
         end
     
         S_EXP_PARENT: begin
-            if (|aes_ready_train[4:1])
+            if (|aes_ready_train[1 +: `COMMIT_WORDS])
                 wren_data_mem_next = 1'b1;
 
 //            if (|aes_ready_train[4:2])
 //                data_mem_addr_opc = PLUS_1_D_M;
             
-            if (|aes_ready_train[4:2])
+            if (|aes_ready_train[2 +: (`COMMIT_WORDS-1)])
                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
-            if (|aes_ready_train[3:1])
+            if (|aes_ready_train[1 +: (`COMMIT_WORDS-1)])
                 data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
         end
         
         S_EXP_GREAT_GP, S_EXP_GP, S_EXP_STORED_N: begin                    
-            if (|aes_ready_train[4:3])
+            if (|aes_ready_train[(1 + `COMMIT_WORDS/2) +: (`COMMIT_WORDS/2)])
                 wren_data_mem_next = 1'b1; // Store right child
                 
-            if (aes_ready_train[4])
+            if (|aes_ready_train[(2 + `COMMIT_WORDS/2) +: (`COMMIT_WORDS/2-1)])
                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
-            if (aes_ready_train[3])
+            if (|aes_ready_train[(1 + `COMMIT_WORDS/2) +: (`COMMIT_WORDS/2-1)])
                 data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
         end
     
         S_FILL_SIBL_PATH_1_STORE: begin
-            if (((|aes_ready_train[2:1] && ~four_counter_bit_sel_pip_3) || (|aes_ready_train[4:3] && four_counter_bit_sel_pip_3)) && state_aes!=S_FILL_SIBL_PATH_1_STORE) begin // Note: might be a good idea to pipeline this one
+//            if (((|aes_ready_train[1+:(`COMMIT_WORDS/2)] && ~four_counter_bit_sel) || (|aes_ready_train[1+(`COMMIT_WORDS/2)+:(`COMMIT_WORDS/2)] && four_counter_bit_sel)) && state_aes!=S_FILL_SIBL_PATH_1_STORE) begin
+            if (((|aes_ready_train[1+:(`COMMIT_WORDS/2)] && ~four_counter_bit_sel_sibl_path_1) || (|aes_ready_train[1+(`COMMIT_WORDS/2)+:(`COMMIT_WORDS/2)] && four_counter_bit_sel_sibl_path_1)) && state_aes!=S_FILL_SIBL_PATH_1_STORE) begin // Note: might be a good idea to pipeline this one
                 wren_key_sig_mem_next= 1'b1;
                 key_sig_mem_addr_opc = PLUS_1_KS_M;
             end
@@ -1914,33 +2025,36 @@ always_comb begin
             key_sig_mem_addr_opc = GOTO_COMMIT_STORAGE;
             
             if (node_idx_is_target_delayed) begin
-                if (|aes_ready_train[4:2])
+                if (|aes_ready_train[2+:(`COMMIT_WORDS-1)])
                     key_sig_mem_addr_opc = PLUS_1_KS_M;
                 
-                if (|aes_ready_train[4:1])
+                if (|aes_ready_train[1+:`COMMIT_WORDS])
                     wren_key_sig_mem_next= 1'b1;
             end
             
-            if (aes_ready_train[9] && node_idx_is_target)
+            if (aes_ready_train[12] && node_idx_is_target)
                 init_mpc_round_next = 1'b1;
         end
         
         S_SEARCH_NEXT_NODE: begin // Same as S_EXP_PARENT
-            if (|aes_ready_train[4:1])
+            if (|aes_ready_train[1+:`COMMIT_WORDS])
                 wren_data_mem_next = 1'b1;
-                
-//            if (aes_ready_train[4:2])
-//                data_mem_addr_opc = PLUS_1_D_M;
                   
-            if (aes_ready_train[4:2])
+            if (|aes_ready_train[2 +:(`COMMIT_WORDS-1)])
                 data_mem_wr_addr_opc = PLUS_1_D_M_WR;
-            if (|aes_ready_train[3:1])
-                data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;      
+            if (|aes_ready_train[1 +:(`COMMIT_WORDS-1)])
+                data_mem_wr_addr_opc_next = PLUS_1_D_M_WR;
         end
         
         S_EXPAND: begin
             if (incr_ks_mem_addr_s_expand)
                 key_sig_mem_addr_opc = PLUS_1_KS_M;
+            
+            if (aes_ready_train[3] && state_aes!=S_EXPAND) begin
+                key_sig_mem_addr_opc = GOTO_ALPHA_MID;
+                    if (verify)
+                        a_mid_valid_to_a_wrap_next = 1'b1;
+            end
         end
    endcase
 end
@@ -1972,7 +2086,7 @@ always_comb begin
     
         S_EXPAND_BRIDGE: next_state_aes = leave_expand_bridge ? S_EXPAND : S_EXPAND_BRIDGE;
         
-        S_EXPAND: next_state_aes          = (ctr!='h2)      ? S_EXPAND          :
+        S_EXPAND: next_state_aes          = (ctr!='h1)      ? S_EXPAND          :
                                             (goto_prep_GGM) ? S_COMMIT_PREP_GGM : S_COMMIT;
         
         S_COMMIT: next_state_aes = S_EXPAND;
@@ -2012,12 +2126,14 @@ always_comb begin
         
         S_GET_SIBL_PATH: begin  // next_state_aes = (path_too_big) ? S_CLEAN_V_MEM : S_FILL_SIBL_PATH_0;
             if (verify) begin
-                if (path_too_big)
+//                if (path_too_big)
+                if (path_len_reject_lookahead)
                     next_state_aes = S_DONE; // BAD_SIG
                 else
                     next_state_aes = S_COPY_NODES_0;
             end else begin
-                if (path_too_big)
+//                if (path_too_big)
+                if (path_len_reject_lookahead)
                     next_state_aes = S_CLEAN_V_MEM;
                 else
                     next_state_aes = S_FILL_SIBL_PATH_0;
@@ -2170,12 +2286,12 @@ always_ff @ (posedge clk) begin
     
     if (~verify)
         party_is_i_star_to_ctrl <= 1'b0;
-    else if (commit_valid)
+    else if (commit_valid) // Note: if can be dropped?
         party_is_i_star_to_ctrl <= notify_ctrl_i_star;
     
     if (~verify)
         rst_v_regs <= 1'b0;
-    else
+    else //if (commit_valid)
         rst_v_regs <= notify_ctrl_i_star;
 end
 

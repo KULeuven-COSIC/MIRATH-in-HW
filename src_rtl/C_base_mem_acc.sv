@@ -1,3 +1,24 @@
+/*
+ * C_base_mem_acc.sv
+ * -----------
+ * This file implements an array of simple Dual-Port Ram instances used to
+ * accumulate and store the C_base matrices for all MPCitH protocol iterations.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "math.vh"
 `include "mirath_hw_params.vh"
 
@@ -9,11 +30,10 @@ module C_base_mem_acc #(
     parameter M_PARAM_R = `M_PARAM_R,
     parameter M_PARAM_K = `M_PARAM_K,
     parameter WORD_SIZE = `WORD_SIZE,
-    parameter S_BASE_MEM_DEPTH = `GET_NIBBLES(M_PARAM_M)*M_PARAM_R+1,
-    parameter C_BASE_MEM_DEPTH = M_PARAM_N-M_PARAM_R+1,
+    parameter C_BASE_MEM_DEPTH = (M_PARAM_N-M_PARAM_R)/2+1,
     parameter TAU = `TAU,
-    parameter SAMPLE_COUNT = 10, // TODO: parametrize for all levels
-    parameter MEM_WIDTH_BYTES = M_PARAM_R
+    parameter SAMPLE_COUNT = `SAMPLE_COUNT,
+    parameter MEM_WIDTH_BYTES = 2*M_PARAM_R
 )(
     input wire rst,
     input wire clk,
@@ -55,7 +75,7 @@ reg [GRAB_REG_LEN-1:0] grab_regs;
 //        shift_counter <= shift_counter -1'b1;
 //end
 
-reg [31:0] phi_i_times_C;
+reg [2*8*M_PARAM_R:0] phi_i_times_C;
 always_ff @ (posedge clk) begin
     if (!grab_regs[0])
         phi_i_times_C[7:0] <= 8'h0;
@@ -76,6 +96,46 @@ always_ff @ (posedge clk) begin
         phi_i_times_C[31:24] <= 8'h0;
     else
         phi_i_times_C[31:24] <= phi_i;
+    
+    if (!grab_regs[4])
+        phi_i_times_C[39:32] <= 8'h0;
+    else
+        phi_i_times_C[39:32] <= phi_i;
+
+    if (!grab_regs[5])
+        phi_i_times_C[47:40] <= 8'h0;
+    else
+        phi_i_times_C[47:40] <= phi_i;
+
+    if (!grab_regs[6])
+        phi_i_times_C[55:48] <= 8'h0;
+    else
+        phi_i_times_C[55:48] <= phi_i;
+
+    if (!grab_regs[7])
+        phi_i_times_C[63:56] <= 8'h0;
+    else
+        phi_i_times_C[63:56] <= phi_i;
+    
+    if (!grab_regs[8])
+        phi_i_times_C[71:64] <= 8'h0;
+    else
+        phi_i_times_C[71:64] <= phi_i;
+
+    if (!grab_regs[9])
+        phi_i_times_C[79:72] <= 8'h0;
+    else
+        phi_i_times_C[79:72] <= phi_i;
+
+    if (!grab_regs[10])
+        phi_i_times_C[87:80] <= 8'h0;
+    else
+        phi_i_times_C[87:80] <= phi_i;
+
+    if (!grab_regs[11])
+        phi_i_times_C[95:88] <= 8'h0;
+    else
+        phi_i_times_C[95:88] <= phi_i;
 end
 
 reg shift_en; //, shift_en_pip;
@@ -91,33 +151,45 @@ always_ff @ (posedge clk) begin // grab_regs update
     
     else if (acc_sample_valid) begin
         case (sample_counter)
-            'h3: begin
-                for (int i = 0; i < 8; i++) begin
-                    grab_regs[M_PARAM_R*i +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
-                end
-             end
-             
-             'h4: begin
-                for (int i = 0; i < 8; i++) begin
-                    grab_regs[M_PARAM_R*(i+8) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
-                end
-             end
-             
-             'h5: begin
-                for (int i = 0; i < 8; i++) begin
-                    grab_regs[M_PARAM_R*(i+16) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+            'h5: begin
+                for (int i = 0; i < 6; i++) begin
+                    grab_regs[M_PARAM_R*i +: M_PARAM_R] <= acc_sample[8*(i+2) +: M_PARAM_R];
                 end
              end
              
              'h6: begin
                 for (int i = 0; i < 8; i++) begin
-                    grab_regs[M_PARAM_R*(i+24) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                    grab_regs[M_PARAM_R*(i+6) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
                 end
              end
              
              'h7: begin
-                for (int i = 0; i < 6; i++) begin
-                    grab_regs[M_PARAM_R*(i+32) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                for (int i = 0; i < 8; i++) begin
+                    grab_regs[M_PARAM_R*(i+14) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                end
+             end
+             
+             'h8: begin
+                for (int i = 0; i < 8; i++) begin
+                    grab_regs[M_PARAM_R*(i+22) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                end
+             end
+             
+             'h9: begin
+                for (int i = 0; i < 8; i++) begin
+                    grab_regs[M_PARAM_R*(i+30) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                end
+             end
+             
+             'ha: begin
+                for (int i = 0; i < 8; i++) begin
+                    grab_regs[M_PARAM_R*(i+38) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
+                end
+             end
+             
+             'hb: begin
+                for (int i = 0; i < 4; i++) begin
+                    grab_regs[M_PARAM_R*(i+46) +: M_PARAM_R] <= acc_sample[8*i +: M_PARAM_R];
                 end
              end
         endcase
@@ -149,7 +221,7 @@ generate
         
         // Set last address to zeros 
         initial begin
-            C_base_mem[FULL_ZEROS_C_BASE_MEM_ADDR] = 42'h0;
+            C_base_mem[FULL_ZEROS_C_BASE_MEM_ADDR] = 84'h0;
 //            C_base_mem[FULL_ZEROS_C_BASE_MEM_ADDR+1] = {8*M_PARAM_R{1'b1}}; // 6*8 = 42 (worst case all sets)
         end
         

@@ -1,130 +1,128 @@
---- aes/src/rtl/aes_core.v	2026-03-13 08:24:38.691668861 +0100
-+++ src_rtl/aes_core_dual_fast.v	2026-03-13 09:29:24.795630239 +0100
-@@ -1,6 +1,6 @@
- //======================================================================
- //
--// aes_core.v
-+// aes_core_dual_fast.v
- // ----------
- // The AES core. This core supports key size of 128, and 256 bits.
- // Most of the functionality is within the submodules.
-@@ -39,21 +39,24 @@
- 
- `default_nettype none
- 
--module aes_core(
-+module aes_core_dual_fast(
-                 input wire            clk,
-                 input wire            reset_n,
- 
--                input wire            encdec,
-+//                input wire            encdec,
-                 input wire            init,
-                 input wire            next,
--                output wire           ready,
-+//                output wire           ready,
- 
-                 input wire [255 : 0]  key,
-                 input wire            keylen,
- 
--                input wire [127 : 0]  block,
--                output wire [127 : 0] result,
--                output wire           result_valid
-+                input wire [127 : 0]  block_0,
-+                input wire [127 : 0]  block_1,
-+                output wire [127 : 0] result_0,
-+                output wire [127 : 0] result_1,
-+                output wire           result_valid,
-+                output wire           ready_in_4
-                );
- 
- 
-@@ -61,45 +64,47 @@
-   // Wires.
-   //----------------------------------------------------------------
-   wire [127 : 0] round_key;
--  wire           key_ready;
-+//  wire           key_ready;
- 
--  wire [127 : 0] enc_new_block;
-+  wire [127 : 0] enc_new_block_0, enc_new_block_1;
-   wire           enc_ready;
- 
-   wire           init_key;
-   wire           next_key;
- 
--
-   //----------------------------------------------------------------
-   // Concurrent connectivity for ports etc.
-   //----------------------------------------------------------------
--  assign ready        = enc_ready;
--  assign result       = enc_new_block;
-+//  assign ready        = enc_ready;
-+  assign result_0       = enc_new_block_0;
-+  assign result_1       = enc_new_block_1;
-   assign result_valid = enc_ready;
- 
- 
-   //----------------------------------------------------------------
-   // Instantiations.
-   //----------------------------------------------------------------
--  aes_encipher_block enc_block(
--                               .clk(clk),
--                               .reset_n(reset_n),
--
--                               .init(init),
--                               .next(next),
--
--                               .keylen(keylen),
--                               .round_key(round_key),
--                               .init_key(init_key),
--                               .next_key(next_key),
-+  aes_encipher_block_dual_fast enc_block_dual(
-+                       .clk(clk),
-+                       .reset_n(reset_n),
-+
-+                       .init(init),
-+                       .next(next),
-+
-+                       .keylen(keylen),
-+                       .round_key(round_key),
-+                       .init_key(init_key),
-+                       .next_key(next_key),
-+
-+                       .block_0(block_0),
-+                       .block_1(block_1),
-+                       .new_block_0(enc_new_block_0),
-+                       .new_block_1(enc_new_block_1),
-+                       .ready(enc_ready),
-+                       .ready_in_4(ready_in_4)
-+                      );
- 
--                               .block(block),
--                               .new_block(enc_new_block),
--                               .ready(enc_ready)
--                              );
--
--
--  aes_key_mem keymem(
-+  aes_key_mem_stream keymem(
-                      .clk(clk),
-                      .reset_n(reset_n),
- 
-@@ -107,13 +112,12 @@
-                      .keylen(keylen),
-                      .init(init_key),
-                      .next(next_key),
--                     .round_key(round_key),
--
--                     .ready(key_ready)
-+                     .round_key(round_key)//,
-+//                     .ready(key_ready)
-                     );
- 
--endmodule // aes_core
-+endmodule // aes_core_dual_fast
- 
- //======================================================================
--// EOF aes_core.v
-+// EOF aes_core_dual_fast.v
- //======================================================================
+42,58c42,60
+< module aes_core(
+<                 input wire            clk,
+<                 input wire            reset_n,
+< 
+<                 input wire            encdec,
+<                 input wire            init,
+<                 input wire            next,
+<                 output wire           ready,
+< 
+<                 input wire [255 : 0]  key,
+<                 input wire            keylen,
+< 
+<                 input wire [127 : 0]  block,
+<                 output wire [127 : 0] result,
+<                 output wire           result_valid
+<                );
+< 
+---
+> module rijndael256_core_dual_fast(
+>   input wire           clk,
+>   input wire           reset_n,
+> 
+>   input wire           init,
+>   input wire           next,
+> 
+>   // Keep external interaction conceptually the same:
+>   // - still a 256-bit key input
+>   input wire [255 : 0] key,
+> 
+>   // Rijndael-256 block = 256 bits
+>   input wire [255 : 0] block_0,
+>   input wire [255 : 0] block_1,
+>   output wire [255 : 0] result_0,
+>   output wire [255 : 0] result_1,
+>   output wire          result_valid,
+>   output wire          ready_in_5
+> );
+63,64c65
+<   wire [127 : 0] round_key;
+<   wire           key_ready;
+---
+>   wire [255 : 0] round_key;
+66c67
+<   wire [127 : 0] enc_new_block;
+---
+>   wire [255 : 0] enc_new_block_0, enc_new_block_1;
+72d72
+< 
+76,79c76,78
+<   assign ready        = enc_ready;
+<   assign result       = enc_new_block;
+<   assign result_valid = enc_ready;
+< 
+---
+>   assign result_0      = enc_new_block_0;
+>   assign result_1      = enc_new_block_1;
+>   assign result_valid  = enc_ready;
+84,119c83,114
+<   aes_encipher_block enc_block(
+<                                .clk(clk),
+<                                .reset_n(reset_n),
+< 
+<                                .init(init),
+<                                .next(next),
+< 
+<                                .keylen(keylen),
+<                                .round_key(round_key),
+<                                .init_key(init_key),
+<                                .next_key(next_key),
+< 
+<                                .block(block),
+<                                .new_block(enc_new_block),
+<                                .ready(enc_ready)
+<                               );
+< 
+< 
+<   aes_key_mem keymem(
+<                      .clk(clk),
+<                      .reset_n(reset_n),
+< 
+<                      .key(key),
+<                      .keylen(keylen),
+<                      .init(init_key),
+<                      .next(next_key),
+<                      .round_key(round_key),
+< 
+<                      .ready(key_ready)
+<                     );
+< 
+< endmodule // aes_core
+< 
+< //======================================================================
+< // EOF aes_core.v
+< //======================================================================
+---
+>   rijndael_encipher_256_df enc_block_dual(
+>     .clk        (clk),
+>     .reset_n    (reset_n),
+> 
+>     .init       (init),
+>     .next       (next),
+> 
+>     .init_key   (init_key),
+>     .next_key   (next_key),
+>     .round_key  (round_key),
+> 
+>     .block_0    (block_0),
+>     .block_1    (block_1),
+>     .new_block_0(enc_new_block_0),
+>     .new_block_1(enc_new_block_1),
+>     .ready      (enc_ready),
+>     .ready_in_5 (ready_in_5)
+>   );
+> 
+>   keymem_256_stream keymem(
+>     .clk      (clk),
+>     .reset_n  (reset_n),
+> 
+>     .key      (key),
+>     .init     (init_key),
+>     .next     (next_key),
+> 
+>     .round_key(round_key),
+>     .ready    (/* unused */)
+>   );
+> 
+> endmodule // rijndael256_core_dual_fast

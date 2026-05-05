@@ -3,8 +3,8 @@
 `define MIRATH_PARAMETER_H
 
 //`include "mirath_tcith_1a_f.vh"
-`include "mirath_tcith_1b_f.vh"
-//`include "mirath_tcith_5b_f.vh"
+//`include "mirath_tcith_1b_f.vh"
+`include "mirath_tcith_5b_f.vh"
 
 `define DOMAIN_SEPARATOR_MESSAGE 0
 `define DOMAIN_SEPARATOR_HASH1 1

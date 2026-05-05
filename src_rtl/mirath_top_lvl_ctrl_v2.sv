@@ -1,3 +1,30 @@
+/*
+ * mirath_top_lvl_ctrl_v2.sv
+ * --------------
+ * This file is the top-level Controller FSM of our hardware implementation of Mirath.
+ *
+ * To keep the complexity of the top-level wrapper (mirath_wrapper_v2) minimal,
+ * a few modules that are directly interfaced with the top-level controller are
+ * also directly instantiated here. These are the accumulator of the auxiliary
+ * value aux (see aux_acc), a small distibuted memory that stores the secret
+ * matrices S and C' (S_C_mem), and a second distibuted memory (h_subctx_mem)
+ * that is used to store the hash values that are derived by hashing the commitments.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "mirath_hw_params.vh"
 
 `default_nettype none
@@ -26,7 +53,7 @@ typedef enum logic [2:0] {FREEZE_ADDR_D_M_TL, PLUS_1_D_M_TL, GOTO_COMMIT_BUFF_TL
 
 typedef enum logic [3:0] {FREEZE_ADDR_KS_M_TL, PLUS_1_KS_M_TL, GOTO_COMMIT, GOTO_SK_SEED,
                           GOTO_PK_SEED, GOTO_Y, GOTO_AUX, GOTO_SALT,
-                          GOTO_HASH_SH, GOTO_MSG, GOTO_ALPHA_BASE, GOTO_H_MPC} key_sig_mem_addr_opcode_tl_t;
+                          GOTO_HASH_SH, GOTO_H_MPC} key_sig_mem_addr_opcode_tl_t;
 
 localparam S_BYTES = `GET_BYTES(`S_ROWS) * `S_COLS;
 localparam C_BYTES = `C_COLS;
@@ -109,6 +136,11 @@ module mirath_top_lvl_ctrl_v2 #(
     output reg                           share_split_done_tl
 );
 
+localparam ALPHA_BASE_0_ADDR  = `ALPHA_BASE_0_ADDR;
+localparam KEY_SIG_MEM_COMMIT_ADDR  = `KEY_SIG_MEM_COMMIT_ADDR;
+localparam AUX_ADDR  = `AUX_ADDR;
+localparam H_MPC_ADDR  = `H_MPC_ADDR;
+
 localparam AUX_WORDS  = `AUX_WORDS;
 localparam SIBL_PATH_ADDR  = `SIBL_PATH_ADDR;
 localparam TOTAL_A_WORDS  = `TOTAL_A_WORDS;
@@ -136,7 +168,7 @@ reg [`COMMIT_SIZE-1:0] h_mpc_storage;
 reg h_mpc_storage_en, h_mpc_storage_en_next;
 reg last_mpc_round, hold_last_mpc_round;
 
-reg [2:0] S_C_mem_address;
+reg [3:0] S_C_mem_address;
 reg [`WORD_SIZE-1:0] S_C_mem_din, S_C_mem_din_next;
 wire [`WORD_SIZE-1:0] S_C_mem_dout;
 reg incr_S_C_addr, incr_S_C_addr_next, wren_S_C, wren_S_C_next;
@@ -147,6 +179,7 @@ key_sig_mem_addr_opcode_tl_t   key_sig_mem_addr_opc, key_sig_mem_addr_opc_next;
 
 reg [1:0]  four_counter, four_counter_prev; // For the 4 hash sub-contexts
 reg [$clog2(`TAU)-1:0] mpc_round_tl;
+reg [$clog2(`TAU)-1:0] mpc_round_tl_pip, mpc_round_tl_pip_2, mpc_round_tl_pip_3, mpc_round_tl_pip_4;
 reg four_counter_incr, four_counter_incr_next;
 
 reg y_word_valid_to_tmp_next, next_y_word_from_tmp_pip;
@@ -176,11 +209,13 @@ reg [`WORD_SIZE-1:0] keccak_din_next;
 //reg wren_data_mem_next;
 reg wren_key_sig_mem_next;
 reg keccak_dout_valid_pip;
-reg [63:0] keccak_dout_valid_train;
+reg [(`AUX_WORDS-1)*8:0] keccak_dout_valid_train;
 reg [10:0]  keccak_data_done_train;
-reg [2*AUX_WORDS+2:0] finalize_aux_train;
+reg [2*AUX_WORDS+3:0] finalize_aux_train;
 reg [17:0] next_verify_round_train;
 reg [10:0] commit_valid_train;
+
+reg [`AUX_WORDS-1:0] aux_words_hash_last_word_trigger;
 
 //reg [`WORD_SIZE-1:0]         data_mem_din_next;
 reg [`WORD_SIZE-1:0]         key_sig_mem_din_next;
@@ -259,7 +294,7 @@ always_ff @ (posedge clk) begin
     
     update_state                <= update_state_next;
     four_counter_incr           <= four_counter_incr_next;
-    acc_e_last_word_next        <= !first_state_cycles[12] && {check_last_acc_e_word[`KEY_SIG_MEM_ADDR_BITS-1], check_last_acc_e_word[2:0]}=='h0; // We're reading from the last word of a given aux[e] value
+//    acc_e_last_word_next        <= !first_state_cycles[6] && !first_state_cycles[12] && {check_last_acc_e_word[`KEY_SIG_MEM_ADDR_BITS-1], check_last_acc_e_word[2:0]}=='h0; // We're reading from the last word of a given aux[e] value
 //    mem_addr_upd_en             <= rst ? 1'b1 : mem_addr_upd_en_next;
     
     share_split_done_tl         <= (state_tl==S_PREFILL_TMP);
@@ -290,8 +325,8 @@ always_ff @ (posedge clk) begin
         exp_chal_regs <= (exp_chal_regs >> $clog2(`N));
     
     if (state_tl==S_EXP_VIEW_CHAL && keccak_dout_valid_train[CHAL_WORDS-2])
-//        reject_v_grinding <= keccak_dout[V_GRINDING_LSB +: 8]!='h0;
-        reject_v_grinding <= {keccak_dout[V_GRINDING_LSB+7+8], keccak_dout[V_GRINDING_LSB +: 8]}!='h0;
+//        reject_v_grinding <= {keccak_dout[V_GRINDING_LSB+7+8], keccak_dout[V_GRINDING_LSB +: 8]}!='h0;
+        reject_v_grinding <= {keccak_dout[V_GRINDING_LSB+7 -: 4]}!='h0;
     else
         reject_v_grinding <= 1'b0;
     
@@ -299,6 +334,18 @@ always_ff @ (posedge clk) begin
         last_mpc_round <= 1'b1;
     else if (~hold_last_mpc_round)
         last_mpc_round <= 1'b0;
+        
+    if (state_tl!=S_HASH_SH)
+        aux_words_hash_last_word_trigger[0] <= 1'b0;
+    else if (first_state_cycles[31])
+        aux_words_hash_last_word_trigger[0] <= 1'b1;
+    else
+        aux_words_hash_last_word_trigger[0] <= aux_words_hash_last_word_trigger[`AUX_WORDS-1];
+    
+    if (state_tl!=S_HASH_SH)
+        aux_words_hash_last_word_trigger[`AUX_WORDS-1:1] <= 'h0;
+    else
+        aux_words_hash_last_word_trigger[`AUX_WORDS-1:1] <= aux_words_hash_last_word_trigger[`AUX_WORDS-2:0];
 end
 
 //assign keccak_din_valid = keccak_input_ctr!=0;
@@ -352,7 +399,6 @@ always_comb begin
     case (state_tl)
         S_EXP_SEED_SK: begin
             keccak_command_next     = `SHAKE_CMD_64(`NODE_SIZE, (`MIRATH_VAR_FF_S_BITS + `MIRATH_VAR_FF_C_BITS));
-            S_C_mem_din_next = keccak_dout;
             
             if (first_state_cycles[0])
                 keccak_input_ctr_rst_next = 1'b1;
@@ -364,31 +410,49 @@ always_comb begin
                 key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
             
             if (keccak_dout_valid && ~keccak_dout_valid_pip) begin
-//                S_C_mem_din_next = keccak_dout;// & `S_C_SET_TO_FF_MASK(0);
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(0);
                 wren_S_C_next      =1'b1;
                 incr_S_C_addr_next = 1'b1;
             end
             
             if (keccak_dout_valid_train[8-1]) begin
-//                S_C_mem_din_next = keccak_dout;// & `S_C_SET_TO_FF_MASK(1);
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(1);
                 wren_S_C_next      =1'b1;
                 incr_S_C_addr_next = 1'b1;
             end
             
             if (keccak_dout_valid_train[2*8-1]) begin
-//                S_C_mem_din_next = keccak_dout;// & `S_C_SET_TO_FF_MASK(2);
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(2);
                 wren_S_C_next      =1'b1;
                 incr_S_C_addr_next = 1'b1;
             end
             
-            if (keccak_dout_valid_train[3*8-1] || keccak_dout_valid_train[4*8-1] || keccak_dout_valid_train[5*8-1] || keccak_dout_valid_train[6*8-1]) begin
-//                S_C_mem_din_next = keccak_dout;// & `S_C_SET_TO_FF_MASK(3);
+            if (keccak_dout_valid_train[3*8-1]) begin
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(3);
                 wren_S_C_next      =1'b1;
                 incr_S_C_addr_next = 1'b1;
             end
             
-            if (keccak_dout_valid_train[7*8-1]) begin
-//                S_C_mem_din_next = keccak_dout;// & `S_C_SET_TO_FF_MASK(7);
+            if (keccak_dout_valid_train[4*8-1]) begin
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(4);
+                wren_S_C_next      =1'b1;
+                incr_S_C_addr_next = 1'b1;
+            end
+            
+            if (keccak_dout_valid_train[5*8-1]) begin
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(5);
+                wren_S_C_next      =1'b1;
+                incr_S_C_addr_next = 1'b1;
+            end
+            
+            if (keccak_dout_valid_train[6*8-1] || keccak_dout_valid_train[7*8-1] || keccak_dout_valid_train[8*8-1] || keccak_dout_valid_train[9*8-1] || keccak_dout_valid_train[10*8-1]) begin
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(6);
+                wren_S_C_next      =1'b1;
+                incr_S_C_addr_next = 1'b1;
+            end
+            
+            if (keccak_dout_valid_train[11*8-1]) begin
+                S_C_mem_din_next = keccak_dout & `S_C_SET_TO_FF_MASK(11);
                 wren_S_C_next      =1'b1;
                 incr_S_C_addr_next = 1'b1;
             end    
@@ -425,11 +489,11 @@ always_comb begin
                 key_sig_mem_din_next            = y_out & (('h1<<(`MIRATH_VAR_FF_Y_BITS%`WORD_SIZE))-1);
             
             // At the same time, init the AUX accumulator"
-            if (|first_state_cycles[7:0]) begin
+            if (|first_state_cycles[0 +: AUX_WORDS]) begin
                 incr_S_C_addr_next = 1'b1;
             end
                 
-            if (|first_state_cycles[9:2])
+            if (|first_state_cycles[2 +: AUX_WORDS])
                 init_aux_next = 1'b1;
             
             // Init the first hash_commits subctx
@@ -460,47 +524,55 @@ always_comb begin
             keccak_dout_shift_bytes_next    = 1'b0;
                         
             // Store one aux instance
-            if (|finalize_aux_train[AUX_WORDS-1:0]) begin
+            if (|finalize_aux_train[1 +: AUX_WORDS]) begin
                 init_aux_next = 1'b1;
             end
             
-            if (|finalize_aux_train[AUX_WORDS:1]) begin
+            if (|finalize_aux_train[2 +: AUX_WORDS]) begin
                 wren_key_sig_mem_next = 1'b1;
             end //  & `S_C_SET_TO_FF_MASK(7)
             
-            if (finalize_aux_train[1])
+            if (finalize_aux_train[2])
                 key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(0);
-            else if (finalize_aux_train[2])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(1);
             else if (finalize_aux_train[3])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(2);
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(1);
             else if (finalize_aux_train[4])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(3);
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(2);
             else if (finalize_aux_train[5])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(4);
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(3);
             else if (finalize_aux_train[6])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(5);
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(4);
             else if (finalize_aux_train[7])
-                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(6);
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(5);
             else if (finalize_aux_train[8])
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(6);
+            else if (finalize_aux_train[9])
                 key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(7);
+            else if (finalize_aux_train[10])
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(8);
+            else if (finalize_aux_train[11])
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(9);
+            else if (finalize_aux_train[12])
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(10);
+            else if (finalize_aux_train[13])
+                key_sig_mem_din_next = aux_word & `S_C_SET_TO_FF_MASK(11);
             
-            if (|finalize_aux_train[AUX_WORDS-1:1])
+            if (|finalize_aux_train[2 +: AUX_WORDS-1] || |finalize_aux_train[AUX_WORDS+2 +: (AUX_WORDS-1)])
                 key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
             
             // Increment mpc_round
-            if (finalize_aux_train[0] || next_verify_round_train[17])
+            if (finalize_aux_train[1] || next_verify_round_train[17])
                 incr_mpc_round_next = 1'b1;
             
             
-            if (|finalize_aux_train[AUX_WORDS+1 +: (AUX_WORDS-1)]) begin
-                key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
-            end // 3 cycles pipeline wait for correct input to the ACC unit
+//            if (|finalize_aux_train[AUX_WORDS+3 +: (AUX_WORDS-1)]) begin
+//                key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
+//            end // 3 cycles pipeline wait for correct input to the ACC unit
             
-            if (|finalize_aux_train[AUX_WORDS+1 +: AUX_WORDS])
+            if (|finalize_aux_train[AUX_WORDS+2 +: AUX_WORDS])
                 incr_S_C_addr_next = 1'b1;
             
-            if (|finalize_aux_train[AUX_WORDS+3 +: AUX_WORDS]) begin
+            if (|finalize_aux_train[AUX_WORDS+4 +: AUX_WORDS]) begin
                 init_aux_next = 1'b1;
             end 
             
@@ -513,7 +585,7 @@ always_comb begin
             if (~prep_store_hash_subctx) begin
                 if (commit_valid_train[0]) begin
                     if (verify)
-                        key_sig_mem_addr_opc_next = GOTO_COMMIT;
+                        key_sig_mem_addr_opc_next = GOTO_COMMIT; // Note: Can place outside and remove mpc_round_tl_pips?
 //                    data_mem_addr_opc_next = GOTO_COMMIT_BUFF_TL;
         //            end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] && ~k_look_ahead_state) begin
                 end else if (|commit_valid_train[1 +: (`COMMIT_WORDS-1)] || keccak_din_valid) begin
@@ -652,19 +724,19 @@ always_comb begin
                 keccak_bytelen_din_next = 'h0;
             else if (first_state_cycles[4])
                 keccak_bytelen_din_next = 'h1;
-            else if (acc_e_last_word_next)
-                keccak_bytelen_din_next = 'h6;
+            else if (aux_words_hash_last_word_trigger[0])
+                keccak_bytelen_din_next = 'h4;
 //            else if (keccak_input_ctr[KECCAK_IN_LEN_CTR_BITS-1:1]!=0)
             else if (enable_bytelen_din)
                 keccak_bytelen_din_next = 'h8;
                        
-            if (first_state_cycles[9+:`COMMIT_WORDS])
+            if (first_state_cycles[5+`COMMIT_WORDS+:`COMMIT_WORDS])
                 keccak_din_next = h_subctx_mem_dout;
                 
-            if (first_state_cycles[7+:`COMMIT_WORDS-1])
+            if (first_state_cycles[3+`COMMIT_WORDS+:`COMMIT_WORDS-1])
                 h_subctx_mem_incr_re_addr_next = 1'b1;
                
-            if (first_state_cycles[10])
+            if (first_state_cycles[2+(2*`COMMIT_WORDS)])
                 key_sig_mem_addr_opc_next = GOTO_AUX;          
             
             // *****************************************************************
@@ -687,7 +759,7 @@ always_comb begin
             
             
             if (verify) begin
-                    y_word_valid_to_tmp_next = 1'b1;
+                    y_word_valid_to_tmp_next = (key_sig_mem_addr!=`SALT_ADDR);
             end
         end
         
@@ -740,9 +812,10 @@ always_comb begin
             keccak_dout_shift_bytes_next = 1'b0;
             keccak_command_next  = `SHA3_CMD_64(8 + 2*`COMMIT_SIZE + `PK_BITS + (`MSG_LEN_BYTES<<3) +`TOTAL_A_BITS); // Add alpha_mid & alpha_base
             
-            if (key_sig_mem_addr==`SALT_ADDR)
-                keccak_bytelen_din_next = `GET_BYTES(`PK_LAST_WORD_BITS);
-            else if (key_sig_mem_addr==`HASH_SH_ADDR)
+//            if (key_sig_mem_addr==`SALT_ADDR)
+//                keccak_bytelen_din_next = `GET_BYTES(`PK_LAST_WORD_BITS);
+//            else 
+            if (key_sig_mem_addr==`HASH_SH_ADDR)
                 keccak_bytelen_din_next = `LAST_MSG_WORD_BYTES;
 //            else if (keccak_input_ctr[KECCAK_IN_LEN_CTR_BITS-1:1]!=0)
             else if (enable_bytelen_din)
@@ -778,8 +851,6 @@ always_comb begin
                 wren_key_sig_mem_next = 1'b1;
                 key_sig_mem_addr_opc_next = PLUS_1_KS_M_TL;
             end
-                
-                
         end // S_HASH_MPC
         
 // *************************************************
@@ -790,7 +861,7 @@ always_comb begin
         
         if (first_state_cycles[1]) begin
             keccak_input_ctr_rst_next = 1'b1;
-            keccak_input_ctr_rst_val_next = 'h6;
+            keccak_input_ctr_rst_val_next = `COMMIT_WORDS + 'h2;
         end
         
         if (|first_state_cycles[4 +: `COMMIT_WORDS+1])
@@ -982,14 +1053,14 @@ always_ff @ (posedge clk) begin
         GOTO_SK_SEED:           key_sig_mem_addr <= `SK_SEED_ADDR;
         GOTO_PK_SEED:           key_sig_mem_addr <= `PK_SEED_ADDR;
         GOTO_Y:                 key_sig_mem_addr <= `Y_ADDR;
-        GOTO_AUX:               key_sig_mem_addr <= `AUX_ADDR + (mpc_round_tl<<3);
+        GOTO_AUX:               key_sig_mem_addr <= `AUX_ADDR + (mpc_round_tl<<3) + (mpc_round_tl<<2);
         GOTO_SALT:              key_sig_mem_addr <= `SALT_ADDR;
         GOTO_HASH_SH:           key_sig_mem_addr <= `HASH_SH_ADDR;
-        GOTO_MSG:               key_sig_mem_addr <= `MSG_ADDR;
-        GOTO_ALPHA_BASE:        key_sig_mem_addr <= `ALPHA_BASE_0_ADDR;
+//        GOTO_MSG:               key_sig_mem_addr <= `MSG_ADDR;
+//        GOTO_ALPHA_BASE:        key_sig_mem_addr <= `ALPHA_BASE_0_ADDR;
 //        GOTO_ALPHA_MID:         key_sig_mem_addr <= `ALPHA_MID_0_ADDR;
         GOTO_H_MPC:             key_sig_mem_addr <= `H_MPC_ADDR;
-        GOTO_COMMIT:            key_sig_mem_addr <= `KEY_SIG_MEM_COMMIT_ADDR + {mpc_round_tl, {$clog2(`COMMIT_WORDS){1'b0}}};
+        GOTO_COMMIT:            key_sig_mem_addr <= `KEY_SIG_MEM_COMMIT_ADDR + {mpc_round_tl_pip_4, {$clog2(`COMMIT_WORDS){1'b0}}}; // Note: Has to change for L3
     endcase // key_sig_mem_addr_opc
 end
 
@@ -1006,6 +1077,11 @@ always_ff @ (posedge clk) begin
         four_counter <= four_counter + 2'h1;
     else if (incr_mpc_round && mpc_round_tl==`TAU-1 && state_tl!=S_SEND_I_STAR)
         four_counter <= four_counter + 2'h1;
+    
+    mpc_round_tl_pip_4 <= mpc_round_tl_pip_3;
+    mpc_round_tl_pip_3 <= mpc_round_tl_pip_2;
+    mpc_round_tl_pip_2 <= mpc_round_tl_pip;
+    mpc_round_tl_pip   <= mpc_round_tl;
     
     if (rst)
         mpc_round_tl <=  'h0;
@@ -1039,7 +1115,7 @@ aux_acc u_aux_acc (
  /* sample_counter */
 /******************/
 always_ff @ (posedge clk) begin
-    sample_is_Srnd_Crnd <= (sample_counter < AUX_WORDS);
+    sample_is_Srnd_Crnd <= (sample_counter < (AUX_WORDS-1));
     next_party  <= (sample_counter==SAMPLE_INPUT_ROUNDS-1);
     
     if (rst)
@@ -1051,18 +1127,16 @@ end
   /***********/
  /* S_C_mem */
 /***********/
-//reg [2:0] S_C_mem_address;
-//reg incr_S_C_addr, incr_S_C_addr_next, wren_S_C, wren_S_C_next;
 always_ff @ (posedge clk) begin
     if (rst)
         S_C_mem_address <= 1'b0;
     else if (incr_S_C_addr)
-        S_C_mem_address <= S_C_mem_address + 1'b1;
+        S_C_mem_address <= (S_C_mem_address==AUX_WORDS-1) ? 'h0 : (S_C_mem_address +1'b1);
 end
 
 simple_dual_port_mem_distr #(
     .WIDTH  (`WORD_SIZE),
-    .DEPTH  (8)
+    .DEPTH  (`AUX_WORDS)
 ) S_C_mem (
     .clk    (clk),
     .wea    (wren_S_C),

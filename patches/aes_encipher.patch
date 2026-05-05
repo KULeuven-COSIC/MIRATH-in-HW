@@ -1,377 +1,420 @@
---- aes/src/rtl/aes_encipher_block.v	2026-03-13 08:24:38.691668861 +0100
-+++ src_rtl/aes_encipher_block_dual_fast.v	2026-03-13 09:29:24.798630001 +0100
-@@ -1,6 +1,6 @@
- //======================================================================
- //
--// aes_encipher_block.v
-+// aes_encipher_block_dual_fast.v
- // --------------------
- // The AES encipher round. A pure combinational module that implements
- // the initial round, main round and final round logic for
-@@ -40,7 +40,7 @@
- 
- `default_nettype none
- 
--module aes_encipher_block(
-+module aes_encipher_block_dual_fast(
-                           input wire            clk,
-                           input wire            reset_n,
- 
-@@ -52,9 +52,12 @@
-                           output wire           next_key,
-                           input wire [127 : 0]  round_key,
- 
--                          input wire [127 : 0]  block,
--                          output wire [127 : 0] new_block,
--                          output wire           ready
-+                          input wire [127 : 0]  block_0,
-+                          input wire [127 : 0]  block_1,
-+                          output wire [127 : 0] new_block_0,
-+                          output wire [127 : 0] new_block_1,
-+                          output wire           ready,
-+                          output reg            ready_in_4
-                          );
- 
- 
-@@ -69,14 +72,12 @@
- 
-   localparam NO_UPDATE    = 3'h0;
-   localparam INIT_UPDATE  = 3'h1;
--  localparam SBOX_UPDATE  = 3'h2;
--  localparam MAIN_UPDATE  = 3'h3;
--  localparam FINAL_UPDATE = 3'h4;
--
--  localparam CTRL_IDLE  = 3'h0;
--  localparam CTRL_INIT  = 3'h1;
--  localparam CTRL_SBOX  = 3'h2;
--  localparam CTRL_MAIN  = 3'h3;
-+  localparam SBOX_AND_MAIN_UPDATE  = 3'h2;
-+  localparam FINAL_UPDATE = 3'h3;
-+
-+  localparam CTRL_IDLE  = 2'h0;
-+  localparam CTRL_INIT  = 2'h1;
-+  localparam CTRL_SBOX_AND_MAIN  = 2'h2;
- 
- 
-   //----------------------------------------------------------------
-@@ -158,27 +159,15 @@
-   //----------------------------------------------------------------
-   // Registers including update variables and write enable.
-   //----------------------------------------------------------------
--  reg [1 : 0]   sword_ctr_reg;
--  reg [1 : 0]   sword_ctr_new;
--  reg           sword_ctr_we;
--  reg           sword_ctr_inc;
--  reg           sword_ctr_rst;
--
-   reg [3 : 0]   round_ctr_reg;
-   reg [3 : 0]   round_ctr_new;
-   reg           round_ctr_we;
-   reg           round_ctr_rst;
-   reg           round_ctr_inc;
- 
--  reg [127 : 0] block_new;
--  reg [31 : 0]  block_w0_reg;
--  reg [31 : 0]  block_w1_reg;
--  reg [31 : 0]  block_w2_reg;
--  reg [31 : 0]  block_w3_reg;
--  reg           block_w0_we;
--  reg           block_w1_we;
--  reg           block_w2_we;
--  reg           block_w3_we;
-+  reg [127 : 0] block_new_0, block_new_1;
-+  reg [127 : 0] block_0_w_reg, block_1_w_reg;
-+  reg block_w_we; // only need one now
- 
-   reg           ready_reg;
-   reg           ready_new;
-@@ -192,11 +181,11 @@
-   //----------------------------------------------------------------
-   // Wires.
-   //----------------------------------------------------------------
--  reg [2 : 0] update_type;
-+  reg [1 : 0] update_type;
- 
- /* verilator lint_off UNOPTFLAT */
--  reg [31 : 0]  muxed_sboxw;
--  wire [31 : 0] new_sboxw;
-+  reg [127 : 0]  muxed_sboxw_0, muxed_sboxw_1; // Not really muxed anymore. Change the name later.
-+  wire [127 : 0] new_sboxw_0, new_sboxw_1;
- /* verilator lint_on UNOPTFLAT */
- 
-   reg tmp_init_key;
-@@ -206,7 +195,8 @@
-   //----------------------------------------------------------------
-   // Instatiations.
-   //----------------------------------------------------------------
--  aes_sbox sbox_inst(.sboxw(muxed_sboxw), .new_sboxw(new_sboxw));
-+  aes_sbox_parallel sbox_inst_0 (.sboxw(muxed_sboxw_0), .new_sboxw(new_sboxw_0));
-+  aes_sbox_parallel sbox_inst_1 (.sboxw(muxed_sboxw_1), .new_sboxw(new_sboxw_1));
- 
- 
-   //----------------------------------------------------------------
-@@ -214,7 +204,8 @@
-   //----------------------------------------------------------------
-   assign init_key  = tmp_init_key;
-   assign next_key  = tmp_next_key;
--  assign new_block = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
-+  assign new_block_0 = block_0_w_reg;
-+  assign new_block_1 = block_1_w_reg;
-   assign ready     = ready_reg;
- 
- 
-@@ -229,31 +220,18 @@
-     begin: reg_update
-       if (!reset_n)
-         begin
--          block_w0_reg  <= 32'h0;
--          block_w1_reg  <= 32'h0;
--          block_w2_reg  <= 32'h0;
--          block_w3_reg  <= 32'h0;
--          sword_ctr_reg <= 2'h0;
-+          block_0_w_reg  <= 128'h0;
-+          block_1_w_reg  <= 128'h0;
-           round_ctr_reg <= 4'h0;
-           ready_reg     <= 1'b1;
-           enc_ctrl_reg  <= CTRL_IDLE;
-         end
-       else
-         begin
--          if (block_w0_we)
--            block_w0_reg <= block_new[127 : 096];
--
--          if (block_w1_we)
--            block_w1_reg <= block_new[095 : 064];
--
--          if (block_w2_we)
--            block_w2_reg <= block_new[063 : 032];
--
--          if (block_w3_we)
--            block_w3_reg <= block_new[031 : 000];
--
--          if (sword_ctr_we)
--            sword_ctr_reg <= sword_ctr_new;
-+          if (block_w_we) begin
-+            block_0_w_reg <= block_new_0;
-+            block_1_w_reg <= block_new_1;
-+          end
- 
-           if (round_ctr_we)
-             round_ctr_reg <= round_ctr_new;
-@@ -274,80 +252,55 @@
-   //----------------------------------------------------------------
-   always @*
-     begin : round_logic
--      reg [127 : 0] old_block, shiftrows_block, mixcolumns_block;
--      reg [127 : 0] addkey_init_block, addkey_main_block, addkey_final_block;
--
--      block_new   = 128'h0;
--      muxed_sboxw = 32'h0;
--      block_w0_we = 1'b0;
--      block_w1_we = 1'b0;
--      block_w2_we = 1'b0;
--      block_w3_we = 1'b0;
--
--      old_block          = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
--      shiftrows_block    = shiftrows(old_block);
--      mixcolumns_block   = mixcolumns(shiftrows_block);
--      addkey_init_block  = addroundkey(block, round_key);
--      addkey_main_block  = addroundkey(mixcolumns_block, round_key);
--      addkey_final_block = addroundkey(shiftrows_block, round_key);
-+//      reg [127 : 0] old_block, shiftrows_block, mixcolumns_block;
-+      reg [127 : 0] shiftrows_block_0, shiftrows_block_1;
-+      reg [127 : 0] mixcolumns_block_0, mixcolumns_block_1;
-+      reg [127 : 0] addkey_init_block_0, addkey_init_block_1;
-+      reg [127 : 0] addkey_main_block_0, addkey_main_block_1;
-+      reg [127 : 0] addkey_final_block_0, addkey_final_block_1;
-+
-+      block_new_0   = 128'h0;
-+      block_new_1   = 128'h0;
-+      muxed_sboxw_0 = block_0_w_reg;
-+      muxed_sboxw_1 = block_1_w_reg;
-+
-+        block_w_we = 1'b0;
-+
-+      shiftrows_block_0    = shiftrows(new_sboxw_0);
-+      shiftrows_block_1    = shiftrows(new_sboxw_1);
-+      
-+      mixcolumns_block_0   = mixcolumns(shiftrows_block_0);
-+      mixcolumns_block_1   = mixcolumns(shiftrows_block_1);
-+      
-+      addkey_init_block_0  = addroundkey(block_0, round_key);
-+      addkey_init_block_1  = addroundkey(block_1, round_key);
-+      
-+      addkey_main_block_0  = addroundkey(mixcolumns_block_0, round_key);
-+      addkey_main_block_1  = addroundkey(mixcolumns_block_1, round_key);
-+      
-+      addkey_final_block_0 = addroundkey(shiftrows_block_0, round_key);
-+      addkey_final_block_1 = addroundkey(shiftrows_block_1, round_key);
- 
-       case (update_type)
-         INIT_UPDATE:
-           begin
--            block_new    = addkey_init_block;
--            block_w0_we  = 1'b1;
--            block_w1_we  = 1'b1;
--            block_w2_we  = 1'b1;
--            block_w3_we  = 1'b1;
--          end
--
--        SBOX_UPDATE:
--          begin
--            block_new = {new_sboxw, new_sboxw, new_sboxw, new_sboxw};
--
--            case (sword_ctr_reg)
--              2'h0:
--                begin
--                  muxed_sboxw = block_w0_reg;
--                  block_w0_we = 1'b1;
--                end
--
--              2'h1:
--                begin
--                  muxed_sboxw = block_w1_reg;
--                  block_w1_we = 1'b1;
--                end
--
--              2'h2:
--                begin
--                  muxed_sboxw = block_w2_reg;
--                  block_w2_we = 1'b1;
--                end
--
--              2'h3:
--                begin
--                  muxed_sboxw = block_w3_reg;
--                  block_w3_we = 1'b1;
--                end
--            endcase // case (sbox_mux_ctrl_reg)
-+            block_new_0    = addkey_init_block_0;
-+            block_new_1    = addkey_init_block_1;
-+            block_w_we  = 1'b1;
-           end
--
--        MAIN_UPDATE:
-+          
-+        SBOX_AND_MAIN_UPDATE:
-           begin
--            block_new    = addkey_main_block;
--            block_w0_we  = 1'b1;
--            block_w1_we  = 1'b1;
--            block_w2_we  = 1'b1;
--            block_w3_we  = 1'b1;
-+            block_new_0    = addkey_main_block_0;
-+            block_new_1    = addkey_main_block_1;
-+            block_w_we  = 1'b1;
-           end
- 
-         FINAL_UPDATE:
-           begin
--            block_new    = addkey_final_block;
--            block_w0_we  = 1'b1;
--            block_w1_we  = 1'b1;
--            block_w2_we  = 1'b1;
--            block_w3_we  = 1'b1;
-+            block_new_0    = addkey_final_block_0;
-+            block_new_1    = addkey_final_block_1;
-+            block_w_we  = 1'b1;
-           end
- 
-         default:
-@@ -358,29 +311,6 @@
- 
- 
-   //----------------------------------------------------------------
--  // sword_ctr
--  //
--  // The subbytes word counter with reset and increase logic.
--  //----------------------------------------------------------------
--  always @*
--    begin : sword_ctr
--      sword_ctr_new = 2'h0;
--      sword_ctr_we  = 1'b0;
--
--      if (sword_ctr_rst)
--        begin
--          sword_ctr_new = 2'h0;
--          sword_ctr_we  = 1'b1;
--        end
--      else if (sword_ctr_inc)
--        begin
--          sword_ctr_new = sword_ctr_reg + 1'b1;
--          sword_ctr_we  = 1'b1;
--        end
--    end // sword_ctr
--
--
--  //----------------------------------------------------------------
-   // round_ctr
-   //
-   // The round counter with reset and increase logic.
-@@ -413,8 +343,6 @@
-       reg [3 : 0] num_rounds;
- 
-       // Default assignments.
--      sword_ctr_inc = 1'b0;
--      sword_ctr_rst = 1'b0;
-       round_ctr_inc = 1'b0;
-       round_ctr_rst = 1'b0;
-       ready_new     = 1'b0;
-@@ -457,34 +385,19 @@
-           begin
-             tmp_next_key  = 1'h1;
-             round_ctr_inc = 1'b1;
--            sword_ctr_rst = 1'b1;
-             update_type   = INIT_UPDATE;
--            enc_ctrl_new  = CTRL_SBOX;
-+            enc_ctrl_new  = CTRL_SBOX_AND_MAIN;
-             enc_ctrl_we   = 1'b1;
-           end
--
--
--        CTRL_SBOX:
--          begin
--            sword_ctr_inc = 1'b1;
--            update_type   = SBOX_UPDATE;
--            if (sword_ctr_reg == 2'h3)
--              begin
--                tmp_next_key  = 1'h1;
--                enc_ctrl_new  = CTRL_MAIN;
--                enc_ctrl_we   = 1'b1;
--              end
--          end
--
--
--        CTRL_MAIN:
-+          
-+          CTRL_SBOX_AND_MAIN:
-           begin
--            sword_ctr_rst = 1'b1;
-             round_ctr_inc = 1'b1;
-+            tmp_next_key  = 1'h1; // Added
-             if (round_ctr_reg < num_rounds)
-               begin
--                update_type   = MAIN_UPDATE;
--                enc_ctrl_new  = CTRL_SBOX;
-+                update_type   = SBOX_AND_MAIN_UPDATE;
-+                enc_ctrl_new  = CTRL_SBOX_AND_MAIN;
-                 enc_ctrl_we   = 1'b1;
-               end
-             else
-@@ -501,9 +414,11 @@
-           begin end
-       endcase // case (enc_ctrl_reg)
-     end // encipher_ctrl
-+    
-+    // Ready in 3 cycles signal
-+    always @ (posedge clk) ready_in_4 <= (round_ctr_reg == 'h6);
-+endmodule // aes_encipher_block_dual_fast
- 
--endmodule // aes_encipher_block
--
--//======================================================================
--// EOF aes_encipher_block.v
- //======================================================================
-+// EOF aes_encipher_block_dual_fast.v
-+//======================================================================
-\ No newline at end of file
+43c43
+< module aes_encipher_block(
+---
+> module rijndael_encipher_256_df(
+50c50
+<                           input wire            keylen,
+---
+> //                          input wire            keylen,
+53c53
+<                           input wire [127 : 0]  round_key,
+---
+>                           input wire [255 : 0]  round_key,
+55,57c55,60
+<                           input wire [127 : 0]  block,
+<                           output wire [127 : 0] new_block,
+<                           output wire           ready
+---
+>                           input wire [255 : 0]  block_0,
+>                           input wire [255 : 0]  block_1,
+>                           output wire [255 : 0] new_block_0,
+>                           output wire [255 : 0] new_block_1,
+>                           output wire           ready,
+>                           output reg            ready_in_5
+70,79c73,80
+<   localparam NO_UPDATE    = 3'h0;
+<   localparam INIT_UPDATE  = 3'h1;
+<   localparam SBOX_UPDATE  = 3'h2;
+<   localparam MAIN_UPDATE  = 3'h3;
+<   localparam FINAL_UPDATE = 3'h4;
+< 
+<   localparam CTRL_IDLE  = 3'h0;
+<   localparam CTRL_INIT  = 3'h1;
+<   localparam CTRL_SBOX  = 3'h2;
+<   localparam CTRL_MAIN  = 3'h3;
+---
+>   localparam NO_UPDATE    = 2'h0;
+>   localparam INIT_UPDATE  = 2'h1;
+>   localparam SBOX_AND_MAIN_UPDATE  = 2'h2;
+>   localparam FINAL_UPDATE = 2'h3;
+> 
+>   localparam CTRL_IDLE  = 2'h0;
+>   localparam CTRL_INIT  = 2'h1;
+>   localparam CTRL_SBOX_AND_MAIN  = 2'h2;
+115,117c116,144
+<   function [127 : 0] mixcolumns(input [127 : 0] data);
+<     reg [31 : 0] w0, w1, w2, w3;
+<     reg [31 : 0] ws0, ws1, ws2, ws3;
+---
+> function [255 : 0] mixcolumns(input [255 : 0] data);
+>   reg [31 : 0] w0, w1, w2, w3, w4, w5, w6, w7;
+>   reg [31 : 0] ws0, ws1, ws2, ws3, ws4, ws5, ws6, ws7;
+>   begin
+>     w0 = data[255 : 224];
+>     w1 = data[223 : 192];
+>     w2 = data[191 : 160];
+>     w3 = data[159 : 128];
+>     w4 = data[127 : 096];
+>     w5 = data[095 : 064];
+>     w6 = data[063 : 032];
+>     w7 = data[031 : 000];
+> 
+>     ws0 = mixw(w0);
+>     ws1 = mixw(w1);
+>     ws2 = mixw(w2);
+>     ws3 = mixw(w3);
+>     ws4 = mixw(w4);
+>     ws5 = mixw(w5);
+>     ws6 = mixw(w6);
+>     ws7 = mixw(w7);
+> 
+>     mixcolumns = {ws0, ws1, ws2, ws3, ws4, ws5, ws6, ws7};
+>   end
+> endfunction // mixcolumns
+> 
+>   function [255 : 0] shiftrows(input [255 : 0] data);
+>     reg [31 : 0] w0, w1, w2, w3, w4, w5, w6, w7;
+>     reg [31 : 0] ws0, ws1, ws2, ws3, ws4, ws5, ws6, ws7;
+119,127c146,163
+<       w0 = data[127 : 096];
+<       w1 = data[095 : 064];
+<       w2 = data[063 : 032];
+<       w3 = data[031 : 000];
+< 
+<       ws0 = mixw(w0);
+<       ws1 = mixw(w1);
+<       ws2 = mixw(w2);
+<       ws3 = mixw(w3);
+---
+>       w0 = data[255 : 224];
+>       w1 = data[223 : 192];
+>       w2 = data[191 : 160];
+>       w3 = data[159 : 128];
+>       w4 = data[127 : 096];
+>       w5 = data[095 : 064];
+>       w6 = data[063 : 032];
+>       w7 = data[031 : 000];
+>       
+>       
+>       ws0 = { w0[31:24], w1[23:16], w3[15:08], w4[07:00] };
+>       ws1 = { w1[31:24], w2[23:16], w4[15:08], w5[07:00] };
+>       ws2 = { w2[31:24], w3[23:16], w5[15:08], w6[07:00] };
+>       ws3 = { w3[31:24], w4[23:16], w6[15:08], w7[07:00] };
+>       ws4 = { w4[31:24], w5[23:16], w7[15:08], w0[07:00] };
+>       ws5 = { w5[31:24], w6[23:16], w0[15:08], w1[07:00] };
+>       ws6 = { w6[31:24], w7[23:16], w1[15:08], w2[07:00] };
+>       ws7 = { w7[31:24], w0[23:16], w2[15:08], w3[07:00] };
+129,147c165
+<       mixcolumns = {ws0, ws1, ws2, ws3};
+<     end
+<   endfunction // mixcolumns
+< 
+<   function [127 : 0] shiftrows(input [127 : 0] data);
+<     reg [31 : 0] w0, w1, w2, w3;
+<     reg [31 : 0] ws0, ws1, ws2, ws3;
+<     begin
+<       w0 = data[127 : 096];
+<       w1 = data[095 : 064];
+<       w2 = data[063 : 032];
+<       w3 = data[031 : 000];
+< 
+<       ws0 = {w0[31 : 24], w1[23 : 16], w2[15 : 08], w3[07 : 00]};
+<       ws1 = {w1[31 : 24], w2[23 : 16], w3[15 : 08], w0[07 : 00]};
+<       ws2 = {w2[31 : 24], w3[23 : 16], w0[15 : 08], w1[07 : 00]};
+<       ws3 = {w3[31 : 24], w0[23 : 16], w1[15 : 08], w2[07 : 00]};
+< 
+<       shiftrows = {ws0, ws1, ws2, ws3};
+---
+>       shiftrows = {ws0, ws1, ws2, ws3, ws4, ws5, ws6, ws7};
+151c169
+<   function [127 : 0] addroundkey(input [127 : 0] data, input [127 : 0] rkey);
+---
+>   function [255 : 0] addroundkey(input [255 : 0] data, input [255 : 0] rkey);
+161,166d178
+<   reg [1 : 0]   sword_ctr_reg;
+<   reg [1 : 0]   sword_ctr_new;
+<   reg           sword_ctr_we;
+<   reg           sword_ctr_inc;
+<   reg           sword_ctr_rst;
+< 
+173,181c185,187
+<   reg [127 : 0] block_new;
+<   reg [31 : 0]  block_w0_reg;
+<   reg [31 : 0]  block_w1_reg;
+<   reg [31 : 0]  block_w2_reg;
+<   reg [31 : 0]  block_w3_reg;
+<   reg           block_w0_we;
+<   reg           block_w1_we;
+<   reg           block_w2_we;
+<   reg           block_w3_we;
+---
+>   reg [255 : 0] block_new_0, block_new_1;
+>   reg [255 : 0] block_0_w_reg, block_1_w_reg;
+>   reg block_w_we; // only need one now
+187,188c193,194
+<   reg [2 : 0]   enc_ctrl_reg;
+<   reg [2 : 0]   enc_ctrl_new;
+---
+>   reg [1 : 0]   enc_ctrl_reg;
+>   reg [1 : 0]   enc_ctrl_new;
+195c201
+<   reg [2 : 0] update_type;
+---
+>   reg [1 : 0] update_type;
+198,199c204,205
+<   reg [31 : 0]  muxed_sboxw;
+<   wire [31 : 0] new_sboxw;
+---
+>   reg [255 : 0]  muxed_sboxw_0, muxed_sboxw_1; // Not really muxed anymore. Change the name later.
+>   wire [255 : 0] new_sboxw_0, new_sboxw_1;
+209c215,218
+<   aes_sbox sbox_inst(.sboxw(muxed_sboxw), .new_sboxw(new_sboxw));
+---
+>   aes_sbox_parallel sbox_inst_0a (.sboxw(muxed_sboxw_0[127 : 0])    , .new_sboxw(new_sboxw_0[127 : 0]));
+>   aes_sbox_parallel sbox_inst_0b (.sboxw(muxed_sboxw_0[255 : 128])  , .new_sboxw(new_sboxw_0[255 : 128]));
+>   aes_sbox_parallel sbox_inst_1a (.sboxw(muxed_sboxw_1[127 : 0])    , .new_sboxw(new_sboxw_1[127 : 0]));
+>   aes_sbox_parallel sbox_inst_1b (.sboxw(muxed_sboxw_1[255 : 128])  , .new_sboxw(new_sboxw_1[255 : 128]));
+217c226,227
+<   assign new_block = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
+---
+>   assign new_block_0 = block_0_w_reg;
+>   assign new_block_1 = block_1_w_reg;
+232,236c242,243
+<           block_w0_reg  <= 32'h0;
+<           block_w1_reg  <= 32'h0;
+<           block_w2_reg  <= 32'h0;
+<           block_w3_reg  <= 32'h0;
+<           sword_ctr_reg <= 2'h0;
+---
+>           block_0_w_reg  <= 256'h0;
+>           block_1_w_reg  <= 256'h0;
+243,256c250,253
+<           if (block_w0_we)
+<             block_w0_reg <= block_new[127 : 096];
+< 
+<           if (block_w1_we)
+<             block_w1_reg <= block_new[095 : 064];
+< 
+<           if (block_w2_we)
+<             block_w2_reg <= block_new[063 : 032];
+< 
+<           if (block_w3_we)
+<             block_w3_reg <= block_new[031 : 000];
+< 
+<           if (sword_ctr_we)
+<             sword_ctr_reg <= sword_ctr_new;
+---
+>           if (block_w_we) begin
+>             block_0_w_reg <= block_new_0;
+>             block_1_w_reg <= block_new_1;
+>           end
+277,292c274,303
+<       reg [127 : 0] old_block, shiftrows_block, mixcolumns_block;
+<       reg [127 : 0] addkey_init_block, addkey_main_block, addkey_final_block;
+< 
+<       block_new   = 128'h0;
+<       muxed_sboxw = 32'h0;
+<       block_w0_we = 1'b0;
+<       block_w1_we = 1'b0;
+<       block_w2_we = 1'b0;
+<       block_w3_we = 1'b0;
+< 
+<       old_block          = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
+<       shiftrows_block    = shiftrows(old_block);
+<       mixcolumns_block   = mixcolumns(shiftrows_block);
+<       addkey_init_block  = addroundkey(block, round_key);
+<       addkey_main_block  = addroundkey(mixcolumns_block, round_key);
+<       addkey_final_block = addroundkey(shiftrows_block, round_key);
+---
+> //      reg [127 : 0] old_block, shiftrows_block, mixcolumns_block;
+>       reg [255 : 0] shiftrows_block_0, shiftrows_block_1;
+>       reg [255 : 0] mixcolumns_block_0, mixcolumns_block_1;
+>       reg [255 : 0] addkey_init_block_0, addkey_init_block_1;
+>       reg [255 : 0] addkey_main_block_0, addkey_main_block_1;
+>       reg [255 : 0] addkey_final_block_0, addkey_final_block_1;
+> 
+>       block_new_0   = 256'h0;
+>       block_new_1   = 256'h0;
+>       muxed_sboxw_0 = block_0_w_reg;
+>       muxed_sboxw_1 = block_1_w_reg;
+> 
+>         block_w_we = 1'b0;
+> 
+> //      old_block          = block_w_reg;
+> //      shiftrows_block    = shiftrows(old_block);
+>       shiftrows_block_0    = shiftrows(new_sboxw_0);
+>       shiftrows_block_1    = shiftrows(new_sboxw_1);
+>       
+>       mixcolumns_block_0   = mixcolumns(shiftrows_block_0);
+>       mixcolumns_block_1   = mixcolumns(shiftrows_block_1);
+>       
+>       addkey_init_block_0  = addroundkey(block_0, round_key);
+>       addkey_init_block_1  = addroundkey(block_1, round_key);
+>       
+>       addkey_main_block_0  = addroundkey(mixcolumns_block_0, round_key);
+>       addkey_main_block_1  = addroundkey(mixcolumns_block_1, round_key);
+>       
+>       addkey_final_block_0 = addroundkey(shiftrows_block_0, round_key);
+>       addkey_final_block_1 = addroundkey(shiftrows_block_1, round_key);
+297,301c308,310
+<             block_new    = addkey_init_block;
+<             block_w0_we  = 1'b1;
+<             block_w1_we  = 1'b1;
+<             block_w2_we  = 1'b1;
+<             block_w3_we  = 1'b1;
+---
+>             block_new_0    = addkey_init_block_0;
+>             block_new_1    = addkey_init_block_1;
+>             block_w_we  = 1'b1;
+303,335c312,313
+< 
+<         SBOX_UPDATE:
+<           begin
+<             block_new = {new_sboxw, new_sboxw, new_sboxw, new_sboxw};
+< 
+<             case (sword_ctr_reg)
+<               2'h0:
+<                 begin
+<                   muxed_sboxw = block_w0_reg;
+<                   block_w0_we = 1'b1;
+<                 end
+< 
+<               2'h1:
+<                 begin
+<                   muxed_sboxw = block_w1_reg;
+<                   block_w1_we = 1'b1;
+<                 end
+< 
+<               2'h2:
+<                 begin
+<                   muxed_sboxw = block_w2_reg;
+<                   block_w2_we = 1'b1;
+<                 end
+< 
+<               2'h3:
+<                 begin
+<                   muxed_sboxw = block_w3_reg;
+<                   block_w3_we = 1'b1;
+<                 end
+<             endcase // case (sbox_mux_ctrl_reg)
+<           end
+< 
+<         MAIN_UPDATE:
+---
+>           
+>         SBOX_AND_MAIN_UPDATE:
+337,341c315,317
+<             block_new    = addkey_main_block;
+<             block_w0_we  = 1'b1;
+<             block_w1_we  = 1'b1;
+<             block_w2_we  = 1'b1;
+<             block_w3_we  = 1'b1;
+---
+>             block_new_0    = addkey_main_block_0;
+>             block_new_1    = addkey_main_block_1;
+>             block_w_we  = 1'b1;
+346,350c322,324
+<             block_new    = addkey_final_block;
+<             block_w0_we  = 1'b1;
+<             block_w1_we  = 1'b1;
+<             block_w2_we  = 1'b1;
+<             block_w3_we  = 1'b1;
+---
+>             block_new_0    = addkey_final_block_0;
+>             block_new_1    = addkey_final_block_1;
+>             block_w_we  = 1'b1;
+361,383d334
+<   // sword_ctr
+<   //
+<   // The subbytes word counter with reset and increase logic.
+<   //----------------------------------------------------------------
+<   always @*
+<     begin : sword_ctr
+<       sword_ctr_new = 2'h0;
+<       sword_ctr_we  = 1'b0;
+< 
+<       if (sword_ctr_rst)
+<         begin
+<           sword_ctr_new = 2'h0;
+<           sword_ctr_we  = 1'b1;
+<         end
+<       else if (sword_ctr_inc)
+<         begin
+<           sword_ctr_new = sword_ctr_reg + 1'b1;
+<           sword_ctr_we  = 1'b1;
+<         end
+<     end // sword_ctr
+< 
+< 
+<   //----------------------------------------------------------------
+416,417d366
+<       sword_ctr_inc = 1'b0;
+<       sword_ctr_rst = 1'b0;
+428,435c377,384
+<       if (keylen == AES_256_BIT_KEY)
+<         begin
+<           num_rounds = AES256_ROUNDS;
+<         end
+<       else
+<         begin
+<           num_rounds = AES128_ROUNDS;
+<         end
+---
+> //      if (keylen == AES_256_BIT_KEY)
+> //        begin
+>           num_rounds = 4'he;
+> //        end
+> //      else
+> //        begin
+> //          num_rounds = AES128_ROUNDS;
+> //        end
+460d408
+<             sword_ctr_rst = 1'b1;
+462c410
+<             enc_ctrl_new  = CTRL_SBOX;
+---
+>             enc_ctrl_new  = CTRL_SBOX_AND_MAIN;
+465,480c413,414
+< 
+< 
+<         CTRL_SBOX:
+<           begin
+<             sword_ctr_inc = 1'b1;
+<             update_type   = SBOX_UPDATE;
+<             if (sword_ctr_reg == 2'h3)
+<               begin
+<                 tmp_next_key  = 1'h1;
+<                 enc_ctrl_new  = CTRL_MAIN;
+<                 enc_ctrl_we   = 1'b1;
+<               end
+<           end
+< 
+< 
+<         CTRL_MAIN:
+---
+>           
+>           CTRL_SBOX_AND_MAIN:
+482c416
+<             sword_ctr_rst = 1'b1;
+---
+> //            sword_ctr_rst = 1'b1;
+483a418
+>             tmp_next_key  = 1'h1; // Added
+486,487c421,422
+<                 update_type   = MAIN_UPDATE;
+<                 enc_ctrl_new  = CTRL_SBOX;
+---
+>                 update_type   = SBOX_AND_MAIN_UPDATE;
+>                 enc_ctrl_new  = CTRL_SBOX_AND_MAIN;
+504,505c439,442
+< 
+< endmodule // aes_encipher_block
+---
+>     
+>     // Ready in 4 cycles signal
+>     always @ (posedge clk) ready_in_5 <= (round_ctr_reg == 'h9);
+> endmodule // rijndael_encipher_256_df
+508c445
+< // EOF aes_encipher_block.v
+---
+> // EOF rijndael_encipher_256_df.v

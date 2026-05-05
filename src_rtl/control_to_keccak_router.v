@@ -1,4 +1,26 @@
-// Simple module to route data from the top-level control module to the Keccak.
+/*
+ * control_to_keccak_router.v
+ * -----------
+ * This file contains a module used to route data from the top-level
+ * contoller FSM to the SHA3 / Keccak engine. A Simple Dual-Port memory
+ * is used as a FIFO, decoupling the absorption of incoming data from the
+ * internal state of the SHA3 / Keccak engine.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "clog2.v"
 `include "keccak_interc_defs.vh"
 

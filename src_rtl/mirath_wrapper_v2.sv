@@ -1,4 +1,24 @@
-`include "mirath_hw_params.vh"
+/*
+ * mirath_wrapper_v2.sv
+ * ----------------------
+ * This file is the main top-level wrapper of our design.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
+ `include "mirath_hw_params.vh"
 `include "E_mul_defines.svh"
 
 `default_nettype none
@@ -14,8 +34,6 @@ module mirath_wrapper_v2 # (
     output wire         done,
     output wire         bad_sig
 );
-
-localparam MSG_LEN_WORDS = `MSG_LEN_WORDS;
 
 wire wren_data_mem_0 = 1'b0;
 wire wren_data_mem_1;
@@ -338,8 +356,8 @@ a_mem_wrapper a_mem_wrapper_inst (
     
     // Inputs
     .mpc_round_V_in     ( mpc_round_aes_2_base ),
-//    .load_i_star        ( 1'b0 ),
-//    .i_star             ( 8'h0 ),
+    .load_i_star        ( 1'b0 ),
+    .i_star             ( 8'h0 ),
     .phi_i_in           ( phi_i_aes_2_base ),
     .gamma              ( keccak_dout[7:0] ),
     .gamma_valid        ( k2c_dout_valid ),
@@ -432,7 +450,8 @@ y_acc y_acc_inst (
     .E_byte_valid       ( E_byte_valid ),
     .keccak_done        ( keccak_done ),
     .squeeze_y          ( squeeze_y ),
-    .rst_y_mul          ( rst_y_mul ),
+//    .rst_y_mul          ( rst_y_mul ),
+    .rst_y_mul          ( 1'b0 ),
     
     // Outputs
     .init_load_done      ( acc_y_init_done ),

@@ -1,4 +1,23 @@
-/* Some implementation-specific parameters */
+/*
+ * mirath_hw_params.vh
+ * -----------
+ * This header file declares some implementation-specific parameters.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `ifndef MIRATH_HW_PARAMS
 `define MIRATH_HW_PARAMS
 
@@ -46,7 +65,9 @@
 `define MIRATH_VAR_FF_E_WORDS    ((`MIRATH_VAR_FF_E_BYTES   + `WORD_TO_BYTE_RATIO - 1) / `WORD_TO_BYTE_RATIO)
 
 `define MIRATH_SALT_WORDS    (`MIRATH_PARAM_SALT_BITS/`WORD_SIZE)
-`define EXPAND_LENGTH       5
+`define EXPAND_LENGTH       'h4 // multiply factor to get random polynomial (L5)
+`define NUM_EXPANDS     `EXPAND_LENGTH
+`define SAMPLE_COUNT     (`EXPAND_LENGTH*4)
 
 `define ALPHA_E_WORDS   (`M_PARAM_RHO/`WORD_TO_BYTE_RATIO)
 `define TOTAL_A_WORDS   (`ALPHA_E_WORDS*2*`TAU)
@@ -96,8 +117,10 @@
 
 // ******************************************
 // Data mem defines:
-`define DATA_MEM_DEPTH (1800)
+//`define DATA_MEM_DEPTH ('d5900)
+`define DATA_MEM_DEPTH ('d5884)
 `define DATA_MEM_ADDR_BITS `CLOG2(`DATA_MEM_DEPTH)
+`define DATA_MEM_ADDR_OPC_OFFSET (((`K_EXIT_IDX<<2) + 6)<<1)
 
 `define ROOT_SEED_ADDR_OFFSET   'h0
 `define ROOT_SEED_ADDR          (`ROOT_SEED_ADDR_OFFSET*`NODE_WORDS)
@@ -128,7 +151,7 @@
 `define PK_LAST_WORD_BITS   (`PK_BITS%`WORD_SIZE)
 
 // First the signature addresses:
-`define KEY_SIG_MEM_DEPTH (512 * 2)
+`define KEY_SIG_MEM_DEPTH (512 * 4)
 `define KEY_SIG_MEM_ADDR_BITS `CLOG2(`KEY_SIG_MEM_DEPTH)
 
 `define SK_SEED_ADDR 'h0
@@ -163,12 +186,15 @@
 //`define MSG_ADDR     (`HASH_SH_ADDR-`MSG_LEN_WORDS)
 
 // ***************************************
-// set_to_ff masks (L1 version)
+// set_to_ff masks (L5 version)
 `define S_C_SET_TO_FF_MASK(x) ( \
-  (x == 0) ? 64'hffff03ffffffffff : \
-  (x == 1) ? 64'hffffffff03ffffff : \
-  (x == 2) ? 64'h03ffffffffff03ff : \
-  (x == 7) ? 64'h00000f0f0f0f0f0f : 64'h0f0f0f0f0f0f0f0f)
+  (x == 0) ? 64'hffffffffffffffff : \
+  (x == 1) ? 64'hffffffffffffffff : \
+  (x == 2) ? 64'hffffffffffffffff : \
+  (x == 3) ? 64'hffffffffffffffff : \
+  (x == 4) ? 64'hffffffffffffffff : \
+  (x == 5) ? 64'h3f3f3f3f3f3fffff : \
+  (x ==11) ? 64'h000000003f3f3f3f : 64'h3f3f3f3f3f3f3f3f)
 
 // ****************************
 // Different SHA-3 input lengths

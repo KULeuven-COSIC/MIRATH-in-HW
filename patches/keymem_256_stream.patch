@@ -1,0 +1,532 @@
+41,84c41,68
+< module aes_key_mem(
+<                    input wire            clk,
+<                    input wire            reset_n,
+< 
+<                    input wire [255 : 0]  key,
+<                    input wire            keylen,
+<                    input wire            init,
+<                    input wire            next,
+< 
+<                    output wire [127 : 0] round_key,
+<                    output wire           ready
+<                   );
+< 
+< 
+<   //----------------------------------------------------------------
+<   // Parameters.
+<   //----------------------------------------------------------------
+<   localparam AES_128_BIT_KEY = 1'h0;
+<   localparam AES_256_BIT_KEY = 1'h1;
+< 
+<   localparam CTRL_IDLE = 2'h0;
+<   localparam CTRL_DONE = 2'h1;
+< 
+< 
+<   //----------------------------------------------------------------
+<   // Registers.
+<   //----------------------------------------------------------------
+<   reg [127 : 0] round_key_reg;
+<   reg [127 : 0] round_key_new;
+<   reg           round_key_we;
+< 
+<   reg [127 : 0] prev_key0_reg;
+<   reg [127 : 0] prev_key0_new;
+<   reg           prev_key0_we;
+< 
+<   reg [127 : 0] prev_key1_reg;
+<   reg [127 : 0] prev_key1_new;
+<   reg           prev_key1_we;
+< 
+<   reg [3 : 0] round_ctr_reg;
+<   reg [3 : 0] round_ctr_new;
+<   reg         round_ctr_rst;
+<   reg         round_ctr_inc;
+<   reg         round_ctr_we;
+---
+> module keymem_256_stream(
+>   input  wire           clk,
+>   input  wire           reset_n,
+> 
+>   input  wire [255 : 0] key,
+>   input  wire           init,
+>   input  wire           next,
+> 
+>   output wire [255 : 0] round_key,
+>   output wire           ready
+> );
+> 
+>   localparam [3:0] NR = 4'he; // 14
+> 
+>   // ----------------------------------------------------------------
+>   // 32-bit S-box helpers (SubWord)
+>   // ----------------------------------------------------------------
+> //  reg  [31:0] sboxw0, sboxw1;
+>   wire [31:0] sub0,  sub1;
+> 
+>   aes_sbox sbox0(.sboxw(A7), .new_sboxw(sub0)); // SubWord(A7)
+>   aes_sbox sbox1(.sboxw(B3), .new_sboxw(sub1)); // SubWord(B3)
+> 
+>   function [7:0] xtime(input [7:0] x);
+>     begin
+>       xtime = {x[6:0], 1'b0} ^ (8'h1b & {8{x[7]}});
+>     end
+>   endfunction
+86,88c70,78
+<   reg [1 : 0] key_mem_ctrl_reg;
+<   reg [1 : 0] key_mem_ctrl_new;
+<   reg         key_mem_ctrl_we;
+---
+>   // ----------------------------------------------------------------
+>   // Registers
+>   // ----------------------------------------------------------------
+>   reg [255:0] round_key_reg, round_key_new;
+>   reg         round_key_we;
+> 
+>   // Holds the *previous output key* (the current schedule state A0..A7)
+> //  reg [255:0] prev_words_reg, prev_words_new;
+> //  reg         prev_words_we;
+90,91c80,86
+<   reg         ready_reg;
+<   reg         ready_new;
+---
+>   reg [7:0]   rcon_reg;//, rcon_new;
+> //  reg         rcon_we;
+> 
+>   reg [3:0]   round_ctr_reg, round_ctr_new; // counts which key was last produced (0..14)
+>   reg         round_ctr_we;
+> 
+>   reg         ready_reg, ready_new;
+94,120d88
+<   reg [7 : 0] rcon_reg;
+<   reg [7 : 0] rcon_new;
+<   reg         rcon_we;
+<   reg         rcon_set;
+<   reg         rcon_next;
+< 
+< 
+<   //----------------------------------------------------------------
+<   // Wires.
+<   //----------------------------------------------------------------
+< /* verilator lint_off UNOPTFLAT */
+<   reg [31 : 0]  sboxw;
+<   wire [31 : 0] new_sboxw;
+< /* verilator lint_on UNOPTFLAT */
+<   reg           round_key_init;
+<   reg           round_key_update;
+< 
+< 
+<   //----------------------------------------------------------------
+<   // Instantiations.
+<   //----------------------------------------------------------------
+<   aes_sbox sbox_inst(.sboxw(sboxw), .new_sboxw(new_sboxw));
+< 
+< 
+<   //----------------------------------------------------------------
+<   // Concurrent assignments for ports.
+<   //----------------------------------------------------------------
+124,323c92,110
+< 
+<   //----------------------------------------------------------------
+<   // reg_update
+<   //
+<   // Update functionality for all registers in the core.
+<   // All registers are positive edge triggered with asynchronous
+<   // active low reset. All registers have write enable.
+<   //----------------------------------------------------------------
+<   always @ (posedge clk or negedge reset_n)
+<     begin: reg_update
+<       if (!reset_n)
+<         begin
+<           round_key_reg    <= 128'h0;
+<           ready_reg        <= 1'b0;
+<           rcon_reg         <= 8'h0;
+<           round_ctr_reg    <= 4'h0;
+<           prev_key0_reg    <= 128'h0;
+<           prev_key1_reg    <= 128'h0;
+<           key_mem_ctrl_reg <= CTRL_IDLE;
+<         end
+<       else
+<         begin
+<           if (ready_we)
+<             ready_reg <= ready_new;
+< 
+<           if (rcon_we)
+<             rcon_reg <= rcon_new;
+< 
+<           if (round_ctr_we)
+<             round_ctr_reg <= round_ctr_new;
+< 
+<           if (round_key_we)
+<             round_key_reg <= round_key_new;
+< 
+<           if (prev_key0_we)
+<             prev_key0_reg <= prev_key0_new;
+< 
+<           if (prev_key1_we)
+<             prev_key1_reg <= prev_key1_new;
+< 
+<           if (key_mem_ctrl_we)
+<             key_mem_ctrl_reg <= key_mem_ctrl_new;
+<         end
+<     end // reg_update
+< 
+< 
+<   //----------------------------------------------------------------
+<   // round_key_gen
+<   //
+<   // The round key generator logic for AES-128 and AES-256.
+<   //----------------------------------------------------------------
+<   always @*
+<     begin: round_key_gen
+<       reg [31 : 0] w0, w1, w2, w3, w4, w5, w6, w7;
+<       reg [31 : 0] k0, k1, k2, k3;
+<       reg [31 : 0] rconw, rotstw, tw, trw;
+< 
+<       // Default assignments.
+<       round_key_new = 128'h0;
+<       round_key_we  = 1'b0;
+<       prev_key0_new = 128'h0;
+<       prev_key0_we  = 1'b0;
+<       prev_key1_new = 128'h0;
+<       prev_key1_we  = 1'b0;
+<       rcon_set      = 1'b0;
+<       rcon_next     = 1'b0;
+<       k0            = 32'h0;
+<       k1            = 32'h0;
+<       k2            = 32'h0;
+<       k3            = 32'h0;
+< 
+<       // Extract words and calculate intermediate values.
+<       // Perform rotation of sbox word etc.
+<       w0 = prev_key0_reg[127 : 096];
+<       w1 = prev_key0_reg[095 : 064];
+<       w2 = prev_key0_reg[063 : 032];
+<       w3 = prev_key0_reg[031 : 000];
+< 
+<       w4 = prev_key1_reg[127 : 096];
+<       w5 = prev_key1_reg[095 : 064];
+<       w6 = prev_key1_reg[063 : 032];
+<       w7 = prev_key1_reg[031 : 000];
+< 
+<       rconw = {rcon_reg, 24'h0};
+<       sboxw = w7;
+<       rotstw = {new_sboxw[23 : 00], new_sboxw[31 : 24]};
+<       trw = rotstw ^ rconw;
+<       tw = new_sboxw;
+< 
+<       if (round_key_init) begin
+<         rcon_set = 1'b1;
+<       end
+< 
+<       // Generate the specific round keys.
+<       if (round_key_update)
+<         begin
+<           case (keylen)
+<             AES_128_BIT_KEY:
+<               begin
+<                 if (round_ctr_reg == 0)
+<                   begin
+<                     round_key_new = key[255 : 128];
+<                     round_key_we  = 1'b1;
+<                     prev_key1_new = key[255 : 128];
+<                     prev_key1_we  = 1'b1;
+<                     rcon_next     = 1'b1;
+<                   end
+<                 else
+<                   begin
+<                     k0 = w4 ^ trw;
+<                     k1 = w5 ^ w4 ^ trw;
+<                     k2 = w6 ^ w5 ^ w4 ^ trw;
+<                     k3 = w7 ^ w6 ^ w5 ^ w4 ^ trw;
+< 
+<                     round_key_new = {k0, k1, k2, k3};
+<                     round_key_we  = 1'b1;
+<                     prev_key1_new = {k0, k1, k2, k3};
+<                     prev_key1_we  = 1'b1;
+<                     rcon_next     = 1'b1;
+<                   end
+<               end
+< 
+<             AES_256_BIT_KEY:
+<               begin
+<                 if (round_ctr_reg == 0)
+<                   begin
+<                     round_key_new = key[255 : 128];
+<                     round_key_we  = 1'b1;
+<                     prev_key0_new = key[255 : 128];
+<                     prev_key0_we  = 1'b1;
+<                   end
+<                 else if (round_ctr_reg == 1)
+<                   begin
+<                     round_key_new = key[127 : 0];
+<                     round_key_we  = 1'b1;
+<                     prev_key1_new = key[127 : 0];
+<                     prev_key1_we  = 1'b1;
+<                     rcon_next     = 1'b1;
+<                   end
+<                 else
+<                   begin
+<                     if (round_ctr_reg[0] == 0)
+<                       begin
+<                         k0 = w0 ^ trw;
+<                         k1 = w1 ^ w0 ^ trw;
+<                         k2 = w2 ^ w1 ^ w0 ^ trw;
+<                         k3 = w3 ^ w2 ^ w1 ^ w0 ^ trw;
+<                       end
+<                     else
+<                       begin
+<                         k0 = w0 ^ tw;
+<                         k1 = w1 ^ w0 ^ tw;
+<                         k2 = w2 ^ w1 ^ w0 ^ tw;
+<                         k3 = w3 ^ w2 ^ w1 ^ w0 ^ tw;
+<                         rcon_next = 1'b1;
+<                       end
+< 
+<                     // Store the generated round keys.
+<                     round_key_new = {k0, k1, k2, k3};
+<                     round_key_we  = 1'b1;
+<                     prev_key1_new = {k0, k1, k2, k3};
+<                     prev_key1_we  = 1'b1;
+<                     prev_key0_new = prev_key1_reg;
+<                     prev_key0_we  = 1'b1;
+<                   end
+<               end
+< 
+<             default:
+<               begin
+<               end
+<           endcase // case (keylen)
+<         end
+<     end // round_key_gen
+< 
+< 
+<   //----------------------------------------------------------------
+<   // rcon_logic
+<   //
+<   // Caclulates the rcon value for the different key expansion
+<   // iterations.
+<   //----------------------------------------------------------------
+<   always @*
+<     begin : rcon_logic
+<       reg [7 : 0] tmp_rcon;
+<       rcon_new = 8'h00;
+<       rcon_we  = 1'b0;
+< 
+<       tmp_rcon = {rcon_reg[6 : 0], 1'b0} ^ (8'h1b & {8{rcon_reg[7]}});
+< 
+<       if (rcon_set)
+<         begin
+<           rcon_new = 8'h8d;
+<           rcon_we  = 1'b1;
+<         end
+< 
+<       if (rcon_next)
+<         begin
+<           rcon_new = tmp_rcon[7 : 0];
+<           rcon_we  = 1'b1;
+<         end
+---
+>   // ----------------------------------------------------------------
+>   // Register update
+>   // ----------------------------------------------------------------
+>   always @(posedge clk or negedge reset_n) begin
+>     if (!reset_n) begin
+>       round_key_reg   <= 256'h0;
+> //      prev_words_reg  <= 256'h0;
+>       rcon_reg        <= 8'h00;
+>       ready_reg       <= 1'b0;
+>     end else begin
+>       if (round_key_we)  round_key_reg  <= round_key_new;
+> //      if (prev_words_we) prev_words_reg <= prev_words_new;
+>       
+>       if (init)
+>           rcon_reg       <= 8'h8d;
+>       else if (next)
+>           rcon_reg       <= xtime(rcon_reg);
+>           
+>       if (init)      ready_reg      <= 1'b1;
+324a112,201
+>   end
+>   
+>   always @ (posedge clk) begin
+>     if (init)
+>         round_ctr_reg <= 'h0;
+>     else if (next)
+>         round_ctr_reg <= round_ctr_reg + 1'b1;
+>   end
+> 
+>   // ----------------------------------------------------------------
+>   // Combinational next-key computation
+>   // Computes NextKey(A, rcon) for Nk=8, Nb=8:
+>   //   B0=A0^g(A7), B1=A1^B0, B2=A2^B1, B3=A3^B2,
+>   //   B4=A4^SubWord(B3), B5=A5^B4, B6=A6^B5, B7=A7^B6
+>   // where g(x)=RotWord(SubWord(x))^(Rcon<<24).
+>   // ----------------------------------------------------------------
+> 
+>     reg [31:0] A0,A1,A2,A3,A4,A5,A6,A7;
+>     reg [31:0] B0,B1,B2,B3,B4,B5,B6,B7;
+>     reg [31:0] rconw;
+>     reg [31:0] gA7;
+> 
+>   always @* begin
+>     // defaults
+>     round_key_new  = round_key_reg;
+>     round_key_we   = 1'b0;
+> 
+> //    prev_words_new = prev_words_reg;
+> //    prev_words_we  = 1'b0;
+> 
+> //    rcon_new       = rcon_reg;
+> //    rcon_we        = 1'b0;
+> 
+>     // Choose the A-words source:
+>     // - before first produced key, we will use the input key when round_ctr_reg==0 and next fires
+>     // - otherwise, we use prev_words_reg (the last produced key)
+>     A0 = round_key_reg[255:224];
+>     A1 = round_key_reg[223:192];
+>     A2 = round_key_reg[191:160];
+>     A3 = round_key_reg[159:128];
+>     A4 = round_key_reg[127: 96];
+>     A5 = round_key_reg[ 95: 64];
+>     A6 = round_key_reg[ 63: 32];
+>     A7 = round_key_reg[ 31:  0];
+> 
+>     // Drive S-boxes (combinational)
+> //    sboxw0 = A7;
+> //    sboxw1 = 32'h0; // set after B3 computed
+> 
+>     rconw = {rcon_reg, 24'h0};
+>     gA7   = {sub0[23:0], sub0[31:24]} ^ rconw;
+> 
+>     B0 = A0 ^ gA7;
+>     B1 = A1 ^ A0 ^ gA7;
+>     B2 = A2 ^ A1 ^ A0 ^ gA7;
+>     B3 = A3 ^ A2 ^ A1 ^ A0 ^ gA7;
+> 
+> //    sboxw1 = B3;
+> 
+>     B4 = A4 ^ sub1;
+>     B5 = A5 ^ A4 ^ sub1;
+>     B6 = A6 ^ A5 ^ A4 ^ sub1;
+>     B7 = A7 ^ A6 ^ A5 ^ A4 ^ sub1;
+> 
+>     if (init) begin
+>       // Match old streamer: init only resets internal sequencing; does NOT latch key.
+>       // Old rcon_set wrote 8'h8d, then first rcon_next makes it 8'h01.
+> //      rcon_new      = 8'h8d;
+> //      rcon_we       = 1'b1;
+> 
+>       // Do not touch round_key_reg or prev_words_reg on init.
+>     end else if (next /*&& ready_reg*/) begin
+>       // Stop advancing beyond key14, but keep output stable if next keeps pulsing.
+> //      if (round_ctr_reg <= NR) begin
+>     
+>       round_key_we   = 1'b1;
+> //      rcon_new       = xtime(rcon_reg);
+> //      rcon_we        = 1'b1;
+> //      prev_words_we  = 1'b1;
+>       
+>         if (round_ctr_reg == 4'h0) begin
+>           // First produced key: sample input key *on next*
+>           round_key_new  = key;
+> 
+> //          prev_words_new = key;      // seed schedule state
+> 
+>         end else /*if (round_ctr_reg < NR + 1)*/ begin
+>           // Produce next expanded key from prev_words_reg using current rcon_reg
+>           // NOTE: At round_ctr_reg==1, rcon_reg should be 8'h01.
+>           round_key_new  = {B0,B1,B2,B3,B4,B5,B6,B7};
+325a203
+> //          prev_words_new = {B0,B1,B2,B3,B4,B5,B6,B7};
+327,346d204
+<   //----------------------------------------------------------------
+<   // round_ctr
+<   //
+<   // The round counter logic with increase and reset.
+<   //----------------------------------------------------------------
+<   always @*
+<     begin : round_ctr
+<       round_ctr_new = 4'h0;
+<       round_ctr_we  = 1'b0;
+< 
+<       if (round_ctr_rst)
+<         begin
+<           round_ctr_new = 4'h0;
+<           round_ctr_we  = 1'b1;
+<         end
+< 
+<       else if (round_ctr_inc)
+<         begin
+<           round_ctr_new = round_ctr_reg + 1'b1;
+<           round_ctr_we  = 1'b1;
+347a206
+> //      end
+348a208
+>   end
+350,411c210
+< 
+<   //----------------------------------------------------------------
+<   // key_mem_ctrl
+<   //
+<   //
+<   // The FSM that controls the round key generation.
+<   //----------------------------------------------------------------
+<   always @*
+<     begin: key_mem_ctrl
+<       ready_new        = 1'b0;
+<       ready_we         = 1'b0;
+<       round_key_init   = 1'b0;
+<       round_key_update = 1'b0;
+<       round_ctr_rst    = 1'b0;
+<       round_ctr_inc    = 1'b0;
+<       key_mem_ctrl_new = CTRL_IDLE;
+<       key_mem_ctrl_we  = 1'b0;
+< 
+<       case(key_mem_ctrl_reg)
+<         CTRL_IDLE:
+<           begin
+<             if (init)
+<               begin
+<                 ready_new        = 1'b0;
+<                 ready_we         = 1'b1;
+<                 round_key_init   = 1'b1;
+<                 round_ctr_rst    = 1'b1;
+<                 key_mem_ctrl_new = CTRL_DONE;
+<                 key_mem_ctrl_we  = 1'b1;
+<               end
+< 
+<             if (next)
+<               begin
+<                 ready_new        = 1'b0;
+<                 ready_we         = 1'b1;
+<                 round_ctr_inc    = 1'b1;
+<                 round_key_update = 1'b1;
+<                 key_mem_ctrl_new = CTRL_DONE;
+<                 key_mem_ctrl_we  = 1'b1;
+<               end
+<           end
+< 
+< 
+<         CTRL_DONE:
+<           begin
+<             ready_new        = 1'b1;
+<             ready_we         = 1'b1;
+<             key_mem_ctrl_new = CTRL_IDLE;
+<             key_mem_ctrl_we  = 1'b1;
+<           end
+< 
+<         default:
+<           begin
+<           end
+<       endcase // case (key_mem_ctrl_reg)
+< 
+<     end // key_mem_ctrl
+< endmodule // aes_key_mem
+< 
+< //======================================================================
+< // EOF aes_key_mem.v
+< //======================================================================
+---
+> endmodule
+\ No newline at end of file

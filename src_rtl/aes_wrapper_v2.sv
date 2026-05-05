@@ -1,3 +1,25 @@
+/*
+ * aes_wrapper_v2.sv
+ * --------------
+ * This file instantiates the GGM Tree FSM (aes_FSM_v2) and the high-throughput
+ * dual AES engine, along with additional wiring and pipeline stages used to
+ * interface them to the rest of the design.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `default_nettype none
 
 `include "aes_parameters.vh"
@@ -5,7 +27,7 @@
 //typedef enum logic [1:0] { MODE_GGM, MODE_EXP_LEAF, MODE_COMMIT } aes_mode_t;
 
  // Note: L1 specific
-localparam NUM_EXPANDS = 5;
+localparam NUM_EXPANDS = `NUM_EXPANDS;
 localparam CTR_BITS    = `CLOG2(NUM_EXPANDS)-1; // Left result (res0): always 0 LSB. Right result (res1): always 1 LSB.
 
 module aes_wrapper_v2(
@@ -87,7 +109,7 @@ wire [`CLOG2(`TREE_NODES)-1:0] node_index_aes;
 wire load_salt, load_seed_from_mem, read_source;
 wire aes_comm_init, aes_comm_next;
 wire aes_core_res_valid, load_key_from_res_0, load_key_from_res_1, store_res;
-wire aes_core_ready_in_4;
+wire aes_core_ready_in_5;
 
 assign mem_2_mem_mux_sel = read_source;
 
@@ -102,7 +124,7 @@ aes_FSM_v2 #( // FSM controller
 
     .start                  (start),       // [1:0]
 
-    .aes_core_ready_in_4    (aes_core_ready_in_4),
+    .aes_core_ready_in_5    (aes_core_ready_in_5),
 
     .i_star_in              (i_star),       // [7:0]
     .i_star_valid           (i_star_valid),
@@ -157,7 +179,7 @@ reg [`NODE_SIZE-1:0] salt_reg_aes; // Todo: fix
 always @ (posedge clk) begin // always loads from key_sig_mem_dout_byte_rev
     if (load_salt) begin
         salt_reg_aes [`WORD_SIZE-1:0] <= key_sig_mem_dout_byte_rev; // load first bits
-        salt_reg_aes [`NODE_SIZE-1:`WORD_SIZE] <= salt_reg_aes [`WORD_SIZE-1:0]; // shift up
+        salt_reg_aes [`WORD_SIZE +: (`NODE_SIZE-`WORD_SIZE)] <= salt_reg_aes [0 +: (`NODE_SIZE-`WORD_SIZE)]; // shift up
     end
 end
 
@@ -168,7 +190,7 @@ always @ (posedge clk) begin
     else if (load_key_from_res_1)
         input_seed <= res_aes_1;
     else if (load_seed_from_mem) begin
-        input_seed [`NODE_SIZE-1:`WORD_SIZE] <= input_seed [`WORD_SIZE-1:0]; // shift up
+        input_seed [`WORD_SIZE +: (`NODE_SIZE-`WORD_SIZE)] <= input_seed [0 +: (`NODE_SIZE-`WORD_SIZE)]; // shift up
         if (read_source) begin
             input_seed [`WORD_SIZE-1:0] <= key_sig_mem_dout_byte_rev; // load first bits from key/sign mem
         end else begin
@@ -187,41 +209,39 @@ generate
 endgenerate
 
 // Process input block by XORing with the proper mask
-reg [127:0] block_0;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b0, 120'b0}  : {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}}); // 128 - (8+32+8)
-reg [127:0] block_1;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b1, 120'b0}  : {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}});
+reg [255:0] block_0;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b0, 120'b0}  : {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}}); // 128 - (8+32+8)
+reg [255:0] block_1;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b1, 120'b0}  : {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}});
 
 // Note: Could indeed try to pipeline if it helps raise fmax
 always_comb begin
     case (mode_aes)
         MODE_GGM: begin
-            block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}};
-            block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}};
+            block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d208{1'b0}}};
+            block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d208{1'b0}}};
         end
        
         MODE_EXP_LEAF: begin
-            block_0 = salt_reg_aes ^ {ctr, 1'b0, 120'b0};
-            block_1 = salt_reg_aes ^ {ctr, 1'b1, 120'b0};
+            block_0 = salt_reg_aes ^ {ctr, 1'b0, 248'b0};
+            block_1 = salt_reg_aes ^ {ctr, 1'b1, 248'b0};
         end
        
         MODE_COMMIT: begin
-            block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d80{1'b0}}};
-            block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d80{1'b0}}};
+            block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d208{1'b0}}};
+            block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d208{1'b0}}};
         end
     endcase
 end
 
-wire [127:0] res_aes_0, res_aes_1;
+wire [255:0] res_aes_0, res_aes_1;
 
-//aes_core_dual aes_core_dual_inst ( // AES / Rijndael datapath instance
-aes_core_dual_fast aes_core_dual_inst ( // AES / Rijndael datapath instance
+rijndael256_core_dual_fast rijndael256_core_dual_inst ( // AES / Rijndael datapath instance
     .reset_n    (~rst),
     .clk        (clk),
     
     .init       (aes_comm_init),
     .next       (aes_comm_next),
     
-    .key        ({input_seed, {(256-`NODE_SIZE){1'b0}}}),
-    .keylen     (`NODE_SIZE>128),
+    .key        (input_seed),
     
     .block_0    (block_0),
     .block_1    (block_1),
@@ -230,7 +250,7 @@ aes_core_dual_fast aes_core_dual_inst ( // AES / Rijndael datapath instance
     .result_1   (res_aes_1),
     
     .result_valid   (aes_core_res_valid),
-    .ready_in_4     (aes_core_ready_in_4)
+    .ready_in_5     (aes_core_ready_in_5)
 );
 
 // Grab result & send it outside word-by-word. Todo: Investigate if using different shifts when expanding

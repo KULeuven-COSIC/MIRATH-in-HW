@@ -1,5 +1,5 @@
-// ********************************************
-// E_mul opcodes to share amongst math modules
+// E_mul opcodes to share amongst arithmetic modules
+
 `ifndef E_MUL_OPCODES
 `define E_MUL_OPCODES
 

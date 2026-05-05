@@ -1,3 +1,29 @@
+/*
+ * keccak_wrapper.v
+ * ------------
+ * This file is a wrapper containing the SHA3 / Keccak engine and the
+ * modules used to interface it to the rest of the system. The
+ * control_to_keccak_router, k_input_fifo, and keccak_to_control_router modules
+ * instantiated here simplify the connections between the SHA3 / Keccak
+ * engine and the top-level controller FSM and allows input data to be
+ * streamed directly independently of whether the engine is currently in
+ * the IDLE, ABSORB or PROCESS state.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "clog2.v"
 `include "keccak_pkg_64.v"
 `include "keccak_interc_defs.vh"
@@ -27,8 +53,8 @@ module keccak_wrapper #(
     output wire rst_y_mul
 );
 
-wire squeeze_done, c2k_dout_valid, c2k_dout_valid_next;
-wire [KECCAK_WIN-1:0] keccak_fifo_din, keccak_din, keccak_com_in, keccak_dout;
+wire squeeze_done, c2k_dout_valid;
+wire [KECCAK_WIN-1:0] keccak_fifo_din, keccak_com_in, keccak_dout;
 
 wire keccak_din_ready, k_dout_ready_next;
 wire consume_buffer, input_round_valid;
@@ -42,16 +68,13 @@ control_to_keccak_router c2k_router (
     .clk                    (clk),
     
     .c2k_din_valid          (c2k_din_valid),
-//    .keccak_din_ready       (keccak_din_ready),
     .bytelen_din            (bytelen_din), // Can go up to 8 -> Make sure its zero when c2k_din_valid==1'b0
     .c2k_din                (c2k_din),
     .com_in                 (com_in),
     .squeeze_done           (squeeze_done),
     .consume_buffer         (consume_buffer),
     
-//    .c2k_din_ready          (c2k_din_ready),
     .c2k_dout_valid         (c2k_dout_valid),
-//    .c2k_dout_valid_next    (c2k_dout_valid_next),
     .dout                   (keccak_fifo_din),
     .com_out                (keccak_com_in),
     .input_done             (input_done),
@@ -63,7 +86,6 @@ keccak_top_64 keccak_inst (
     .rst                    (rst),
     .clk                    (clk),
     
-//    .din_valid_next         (c2k_dout_valid_next),
     .din                    (k_fifo_dout),
     .com_in                 (keccak_com_in),
     
@@ -107,5 +129,7 @@ simple_dual_port_mem #(
     .dia     (keccak_fifo_din),
     .dob     (k_fifo_dout)
 );
+
+wire k_fifo_debug_wire = (k_din_fifo_addr_wr == k_din_fifo_addr_re);
 
 endmodule

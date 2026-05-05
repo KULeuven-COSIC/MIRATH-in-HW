@@ -1,3 +1,25 @@
+/*
+ * TMP_wrapper.sv
+ * -----------
+ * This file corresponds to the VecTmp MAC module shown in Figure 4.
+ * Using E_base and E_mid, along with H', it computes vectors tmp and
+ * tmp'.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "math.vh"
 `include "mirath_hw_params.vh"
 
@@ -33,8 +55,13 @@ module TMP_wrapper #(
 reg [8*`TAU-1:0]        i_star_regs;
 reg [`WORD_SIZE-1:0]    y_word_reg;
 
-reg [TMP_MEM_W-1:0]  dout_tmp_base [TAU-1:0]; // TMP_MEM_W = 8 * 8
-reg [TMP_MEM_W-1:0]  dout_tmp_mid  [TAU-1:0];
+//reg [TMP_MEM_W-1:0]  dout_tmp_base [TAU-1:0]; // TMP_MEM_W = 8 * 8
+//reg [TMP_MEM_W-1:0]  dout_tmp_mid  [TAU-1:0];
+wire [TMP_MEM_W-1:0]  dout_tmp_base [TAU-1:0]; // TMP_MEM_W = 8 * 8
+wire [TMP_MEM_W-1:0]  dout_tmp_mid  [TAU-1:0];
+reg [71:0]  dout_tmp_base_merged [TAU*8/9-1:0]; // 32 dout buses - mem_width = max RAMB36 width
+reg [71:0]  dout_tmp_mid_merged  [TAU*8/9-1:0];
+
 reg [2:0] H_row_sub_ctr, H_row_sub_ctr_pip;
 always_ff @ (posedge clk) begin
     H_row_sub_ctr_pip <= H_row_sub_ctr;
@@ -173,12 +200,12 @@ always_comb begin
             if (E_mul_res_valid_pip) begin
                 incr_H_sub_row_ctr = 1'b1;
                 
-                if (H_row_sub_ctr=='h7 || H_row_div_8_ctr==(H_ROWS_DIV_8-'h1)) begin
+                if (H_row_sub_ctr=='h7 || (H_row_div_8_ctr==(H_ROWS_DIV_8-'h1) && H_row_sub_ctr=='h4)) begin
                     incr_H_row_ctr = 1'b1;
                     incr_wr_addr_next = 1'b1;
                 end
                 
-                if (H_row_div_8_ctr==(H_ROWS_DIV_8-'h1))
+                if (H_row_div_8_ctr==(H_ROWS_DIV_8-'h1) && H_row_sub_ctr=='h4)
                     incr_re_addr = 1'b1;
             end
         end
@@ -220,7 +247,7 @@ always_comb begin
 end
 
 
-always_ff @ (posedge clk) tmp_prefill_done <= (E_mul_res_valid_pip /*&& H_row_sub_ctr=='h7 */&& H_row_div_8_ctr==(H_ROWS_DIV_8-'h1));
+always_ff @ (posedge clk) tmp_prefill_done <= (E_mul_res_valid_pip && H_row_sub_ctr=='h4 && H_row_div_8_ctr==(H_ROWS_DIV_8-'h1));
 
 // ***************************************************
 // FSM state update:
@@ -236,7 +263,7 @@ always_comb begin
     
     case(state_tmp)
         FILL_eA:
-            if (E_mul_res_valid_pip && /* H_row_sub_ctr=='h7 && */ H_row_div_8_ctr==(H_ROWS_DIV_8-'h1))
+            if (E_mul_res_valid_pip && H_row_div_8_ctr==(H_ROWS_DIV_8-'h1) && H_row_sub_ctr=='h4)
                 next_state_tmp = ACC_H_eB;
         
         ACC_H_eB:
@@ -249,54 +276,284 @@ end
 
 // ***************************************************
 // Memory instantiations
+reg mem_wren[7:0];
+always_ff @(posedge clk) begin            
+    for (int k=0; k<8; k++) begin             
+        mem_wren[k] <= ((state_tmp==FILL_eA)  && (E_mul_res_valid_pip) && (H_row_sub_ctr==k))
+            || ((state_tmp==ACC_H_eB) && (H_elements_pip[k]));
+    end
+end
+
+// Compute y * p^2 for verification:
+wire [7:0] p_pow_2_mul_out [0:TAU-1];
+reg [7:0]  y_times_p_squared [0:TAU-1];
+always_ff @ (posedge clk) begin
+    for (int j=0; j<TAU; j++) begin
+      y_times_p_squared[j] <= (~y_word_reg[0]) ? 8'h00 : p_pow_2_mul_out[j];
+    end
+end
 
 genvar i;
-generate
-    for (i=0; i<TAU; i++) begin : TAU_TMP_mems
-        localparam int IDX = i;
-        
-        // Compute y * p^2 for verification:
-        reg [7:0]  y_times_p_squared;
-        wire [7:0] p_pow_2_mul_out;
-        
+genvar l;
+generate // Only for TAU=='d36
+    for (i=0; i<TAU; i++) begin : TAU_p_pow_2_muls
         gf256_squaring_mul mul_p_pow_2_inst (
             .a  (i_star_regs[8*i +: 8]),
-            .p  (p_pow_2_mul_out)
+            .p  (p_pow_2_mul_out[i])
         );
+    end
+    
+    for (i=0; i<TAU; i+=9) begin : TAU_TMP_mems_x9 // We take advantage of the maximum width of a BRAM36 being 72 bits
+        localparam int I0 = i;
+        localparam int I1 = i+1;
+        localparam int I2 = i+2;
+        localparam int I3 = i+3;
+        localparam int I4 = i+4;
+        localparam int I5 = i+5;
+        localparam int I6 = i+6;
+        localparam int I7 = i+7;
+        localparam int I8 = i+8;
         
-        always_ff @ (posedge clk) begin
-            if (~y_word_reg[0])
-                y_times_p_squared <= 'h0;
-            else
-                y_times_p_squared <= p_pow_2_mul_out;
-        end
+        // Instantiate the mems
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_0 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_1 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_2 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_3 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_4 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_5 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_6 [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_base_mem_7 [TMP_MEM_D-1:0];
         
-        // Instantiate the mem
-//        (* ram_style = "distributed" *) 
-        reg [TMP_MEM_W-1:0] TMP_base_mem [TMP_MEM_D-1:0];
-        
-//        (* ram_style = "distributed" *)
-        reg [TMP_MEM_W-1:0] TMP_mid_mem  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_0  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_1  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_2  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_3  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_4  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_5  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_6  [TMP_MEM_D-1:0];
+        (* ram_style="block" *) reg [71:0] TMP_mid_mem_7  [TMP_MEM_D-1:0];
         
         // Set last address to zeros for initial prefill
-        initial TMP_base_mem[TMP_MEM_D-1] = 'h0;
-        initial TMP_mid_mem [TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_0[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_1[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_2[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_3[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_4[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_5[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_6[TMP_MEM_D-1] = 'h0;
+        initial TMP_base_mem_7[TMP_MEM_D-1] = 'h0;
         
-        reg mem_wren[7:0];
+        initial TMP_mid_mem_0 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_1 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_2 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_3 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_4 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_5 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_6 [TMP_MEM_D-1] = 'h0;
+        initial TMP_mid_mem_7 [TMP_MEM_D-1] = 'h0;
         
+        localparam integer GROUP = i/9;
         always_ff @(posedge clk) begin            
-            for (int k=0; k<8; k++) begin             
-                mem_wren[k] <= ((state_tmp==FILL_eA)  && (E_mul_res_valid_pip) && (H_row_sub_ctr==k))
-                            || ((state_tmp==ACC_H_eB) && (H_elements_pip[k]));
-                
-                if (mem_wren[k]) begin
-                    TMP_base_mem[wr_addr_TMP][8*k+:8] <=  dout_tmp_base[i][8*k+:8] ^ E_base_elem[i] ^ y_times_p_squared;
-                    TMP_mid_mem[wr_addr_TMP][8*k+:8]  <=  dout_tmp_mid[i][8*k+:8]  ^ E_mid_elem[i];
-                end
-            end                                 
+            // Lane 0 (given)
+            dout_tmp_base_merged[8*GROUP+0] <= TMP_base_mem_0[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+0] <= TMP_mid_mem_0 [re_addr_TMP];
+            if (mem_wren[0]) begin
+                TMP_base_mem_0[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+0] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
             
-            dout_tmp_base[i] <= TMP_base_mem[re_addr_TMP];
-            dout_tmp_mid[i] <= TMP_mid_mem[re_addr_TMP];
+                TMP_mid_mem_0[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+0] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 1
+            dout_tmp_base_merged[8*GROUP+1] <= TMP_base_mem_1[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+1] <= TMP_mid_mem_1 [re_addr_TMP];
+            if (mem_wren[1]) begin
+                TMP_base_mem_1[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+1] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),//
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_1[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+1] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 2
+            dout_tmp_base_merged[8*GROUP+2] <= TMP_base_mem_2[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+2] <= TMP_mid_mem_2 [re_addr_TMP];
+            if (mem_wren[2]) begin
+                TMP_base_mem_2[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+2] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_2[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+2] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 3
+            dout_tmp_base_merged[8*GROUP+3] <= TMP_base_mem_3[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+3] <= TMP_mid_mem_3 [re_addr_TMP];
+            if (mem_wren[3]) begin
+                TMP_base_mem_3[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+3] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_3[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+3] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 4
+            dout_tmp_base_merged[8*GROUP+4] <= TMP_base_mem_4[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+4] <= TMP_mid_mem_4 [re_addr_TMP];
+            if (mem_wren[4]) begin
+                TMP_base_mem_4[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+4] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_4[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+4] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 5
+            dout_tmp_base_merged[8*GROUP+5] <= TMP_base_mem_5[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+5] <= TMP_mid_mem_5 [re_addr_TMP];
+            if (mem_wren[5]) begin
+                TMP_base_mem_5[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+5] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_5[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+5] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 6
+            dout_tmp_base_merged[8*GROUP+6] <= TMP_base_mem_6[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+6] <= TMP_mid_mem_6 [re_addr_TMP];
+            if (mem_wren[6]) begin
+                TMP_base_mem_6[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+6] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_6[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+6] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+            // Lane 7
+            dout_tmp_base_merged[8*GROUP+7] <= TMP_base_mem_7[re_addr_TMP];
+            dout_tmp_mid_merged [8*GROUP+7] <= TMP_mid_mem_7 [re_addr_TMP];
+            if (mem_wren[7]) begin
+                TMP_base_mem_7[wr_addr_TMP] <= dout_tmp_base_merged[8*GROUP+7] ^ {
+                    (E_base_elem[I8] ^ y_times_p_squared[I8]),
+                    (E_base_elem[I7] ^ y_times_p_squared[I7]),
+                    (E_base_elem[I6] ^ y_times_p_squared[I6]),
+                    (E_base_elem[I5] ^ y_times_p_squared[I5]),
+                    (E_base_elem[I4] ^ y_times_p_squared[I4]),
+                    (E_base_elem[I3] ^ y_times_p_squared[I3]),
+                    (E_base_elem[I2] ^ y_times_p_squared[I2]),
+                    (E_base_elem[I1] ^ y_times_p_squared[I1]),
+                    (E_base_elem[I0] ^ y_times_p_squared[I0])
+                };
+            
+                TMP_mid_mem_7[wr_addr_TMP] <= dout_tmp_mid_merged[8*GROUP+7] ^ {
+                    E_mid_elem[I8], E_mid_elem[I7], E_mid_elem[I6], E_mid_elem[I5],
+                    E_mid_elem[I4], E_mid_elem[I3], E_mid_elem[I2], E_mid_elem[I1], E_mid_elem[I0]
+                };
+            end
+            
+        end
+        
+        for (l=0; l<9; l++) begin
+            assign dout_tmp_base[i+l] = {
+                dout_tmp_base_merged[8*GROUP+7][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+6][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+5][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+4][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+3][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+2][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+1][8*l+:8],
+                dout_tmp_base_merged[8*GROUP+0][8*l+:8]
+            };
+            
+            assign dout_tmp_mid[i+l] = {
+                dout_tmp_mid_merged[8*GROUP+7][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+6][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+5][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+4][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+3][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+2][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+1][8*l+:8],
+                dout_tmp_mid_merged[8*GROUP+0][8*l+:8]
+            };
         end
     end
 endgenerate
@@ -312,21 +569,6 @@ always_ff @ (posedge clk) begin
 //        i_star_regs <= {i_star_elem_in, i_star_regs[8*`TAU-1 : $clog2(`N-1)]};
 //        i_star_regs <= {i_star_regs[$clog2(`N-1)-1 : 0], i_star_regs[8*`TAU-1 : $clog2(`N-1)]};
 end
-
-// ********************
-// p^2 mul instance
-//wire [7:0] p_pow_2_mul_out;
-//gf256_squaring_mul mul_p_pow_2_inst (
-//    .a  (i_star_regs[7:0]),
-//    .p  (p_pow_2_mul_out)
-//);
-
-//always_ff @ (posedge clk) begin
-//    if (~y_word_reg[0])
-//        y_times_p_squared <= 'h0;
-//    else
-//        y_times_p_squared <= p_pow_2_mul_out;
-//end
 
 reg next_y_elem, y_elem_upd_disable;
 always_ff @ (posedge clk) begin

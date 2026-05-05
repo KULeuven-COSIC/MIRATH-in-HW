@@ -38,20 +38,78 @@ task clear_S_C_mem_to_x;
     end
 endtask
 
-task clear_key_sig_mem_a_base_to_x;
+task clear_A_mem_to_x; // /tb_sign_verify/DUT/base_mem_wrapper_inst/Sb_mem_acc_inst/\TAU_S_base_mems[0].S_base_mem 
     begin
-      for (int i = `ALPHA_BASE_0_ADDR; i < (`ALPHA_BASE_0_ADDR+`TAU*`M_PARAM_RHO/4); i = i + `M_PARAM_RHO/4) begin
-        DUT.key_sign_mem_inst.mem[i]   = 'x;
-        DUT.key_sign_mem_inst.mem[i+1] = 'x;
-      end
+        for (int j = 0; j < `MIRATH_PARAM_RHO; j = j + 1) begin
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[0].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[2].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[4].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[6].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[8].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[10].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[12].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[14].A_mem[j] = 'x;
+          DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[16].A_mem[j] = 'x;
+        end
+    end
+endtask
+
+task clear_TMP_mem_to_x; // /tb_sign_verify/DUT/base_mem_wrapper_inst/Sb_mem_acc_inst/\TAU_S_base_mems[0].S_base_mem 
+    begin
+        for (int j = 0; j < 80; j = j + 1) begin
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_0[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_1[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_2[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_3[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_4[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_5[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_6[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[0].TMP_base_mem_7[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_0[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_1[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_2[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_3[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_4[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_5[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_6[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[9].TMP_base_mem_7[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_0[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_1[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_2[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_3[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_4[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_5[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_6[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[18].TMP_base_mem_7[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_0[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_1[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_2[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_3[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_4[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_5[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_6[j] = 'x;
+          DUT.TMP_wrapper_inst.TAU_TMP_mems_x9[27].TMP_base_mem_7[j] = 'x;
+        end
     end
 endtask
 
 task clear_S_base_mem_to_x; // /tb_sign_verify/DUT/base_mem_wrapper_inst/Sb_mem_acc_inst/\TAU_S_base_mems[0].S_base_mem 
     begin
 //      for (int i = 0; i < `TAU; i = i + 1) begin
-        for (int j = 0; j < 44; j = j + 1) begin
+        for (int j = 0; j < 42; j = j + 1) begin
           DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[0].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[1].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[2].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[3].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[4].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[5].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[6].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[7].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[8].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[9].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[10].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[11].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+          DUT.base_mem_wrapper_inst.Sb_mem_acc_inst.TAU_S_base_mems[35].S_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
         end
 //      end
     end
@@ -60,7 +118,8 @@ endtask
 task clear_a_base_mem_to_x; // /tb_sign_verify/DUT/base_mem_wrapper_inst/Sb_mem_acc_inst/\TAU_S_base_mems[0].S_base_mem 
     begin
       for (int j = 0; j < `M_PARAM_RHO; j = j + 1) begin
-        DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems[16].A_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+//        DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems[16].A_base_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
+        DUT.a_mem_wrapper_inst.A_mem_acc_inst.TAU_A_mems_x2[16].A_mem[j] = 'x; // all Xs DUT/u_mirath_top_lvl_ctrl_v2/u_aux_acc/shift_regs
       end
     end
 endtask
@@ -111,8 +170,8 @@ initial begin
     clear_aux_acc_to_x; // Clear aux regs contents
     clear_S_C_mem_to_x; // Clear S_C_mem contents
     clear_S_base_mem_to_x; // Clear S_base_mem contents
-    clear_a_base_mem_to_x; // Clear S_base_mem contents
-    clear_key_sig_mem_a_base_to_x; // Clear key_sig_mem a_base contents
+    clear_A_mem_to_x; // Clear A_mem contents
+    clear_TMP_mem_to_x;
     tb_rst = 1'b0;
     tb_start = `START_VERIFY;
     t_start_ver = $time;               // start asserted here

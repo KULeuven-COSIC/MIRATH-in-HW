@@ -1,13 +1,33 @@
+/*
+ * C_mem.sv
+ * ---------
+ * This file implements a RAM that stores the secret (witness) matrix C'
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "math.vh"
 
 `default_nettype none
 
 module C_mem #(
-    parameter M_PARAM_M = 42,
-    parameter M_PARAM_N = M_PARAM_M,
-    parameter M_PARAM_R = 4,
-    parameter M_PARAM_K = 1443,
-    parameter WORD_SIZE = 64,
+    parameter M_PARAM_M = `M_PARAM_M,
+    parameter M_PARAM_N = `M_PARAM_N,
+    parameter M_PARAM_R = `M_PARAM_R,
+    parameter M_PARAM_K = `M_PARAM_K,
+    parameter WORD_SIZE = `WORD_SIZE,
     parameter S_MEM_DEPTH = `GET_BYTES(M_PARAM_M)*M_PARAM_R,
     parameter C_MEM_DEPTH = M_PARAM_N-M_PARAM_R+2
 )(

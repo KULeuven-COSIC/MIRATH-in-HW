@@ -1,3 +1,24 @@
+/*
+ * a_mem_wrapper.sv
+ * -----------
+ * This file is an interface between the VecAlpha MAC module (shown in
+ * Figure 4) and the rest of the design.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 `include "math.vh"
 `include "mirath_hw_params.vh"
 
@@ -5,20 +26,20 @@
 
 module a_mem_wrapper #(
     parameter M_PARAM_RHO = `M_PARAM_RHO,
-    parameter WORD_SIZE = 64,
+    parameter WORD_SIZE = `WORD_SIZE,
     parameter TAU = `TAU,
-    parameter SAMPLE_COUNT = 10,
+    parameter SAMPLE_COUNT = `SAMPLE_COUNT,
     parameter V_MEM_DEPTH = M_PARAM_RHO+1
 )(
     input wire                  rst,
     input wire                  clk,
     
     input wire [$clog2(TAU)-1:0] mpc_round_V_in,
-//    input wire                  load_i_star,
+    input wire                  load_i_star,
     input wire                  share_split_done_V,
     input wire                  init_acc_round_aes_pip,
     input wire                  keccak_done,
-//    input wire [$clog2(`N)-1:0] i_star,
+    input wire [$clog2(`N)-1:0] i_star,
     input wire [$clog2(`N)-1:0] phi_i_in,
     input wire [7:0]            gamma,
     input wire                  gamma_valid,
@@ -43,6 +64,9 @@ reg a_word_is_mid;
 always_ff @ (posedge clk) a_word_is_mid_out <= a_word_is_mid;
 
 reg [(`M_PARAM_RHO/8)-1:0] a_mid_in_valid_train;
+
+reg init_acc_round_aes_internal;
+always_ff @ (posedge clk) if (~shift_en_next_V && acc_sample_valid) init_acc_round_aes_internal <= init_acc_round_aes_pip;
 
 reg [$clog2(`M_PARAM_RHO)-1:0] rho_ctr;
 reg [$clog2(`TAU)-1:0] mpc_round_a;
@@ -94,34 +118,46 @@ always_ff @ (posedge clk) keccak_done_pip   <= keccak_done;
 always_ff @ (posedge clk) keccak_done_pip_2 <= keccak_done_pip;
 always_ff @ (posedge clk) keccak_done_pip_3 <= keccak_done_pip_2;
 
+reg [$clog2(TAU)-1:0] mpc_round_V_in_pip;
 reg [$clog2(TAU)-1:0] mpc_round_V;
-always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_V <=  mpc_round_V_in;
+always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_V_in_pip <=  mpc_round_V_in;
+always_ff @ (posedge clk) if (~shift_en_next_V)  mpc_round_V <=  mpc_round_V_in_pip;
+
+reg read_addr_upd_V;
+reg rst_v_regs_internal;
+always_ff @ (posedge clk) begin
+    if (rst_v_regs)
+        rst_v_regs_internal <= 1'b1;
+    else if (~read_addr_upd_V)
+        rst_v_regs_internal <= 1'b0;
+end
 
 localparam GRAB_REG_V_LEN = 8*M_PARAM_RHO;
 reg [GRAB_REG_V_LEN-1:0] grab_regs_V;
 reg [8*`M_PARAM_RHO-1:0] grab_regs_A_mid;
-wire [$clog2(`N)-1:0] shift_regs_out = rst_v_regs ? grab_regs_A_mid[$clog2(`N)-1:0] : grab_regs_V[$clog2(`N)-1:0];
+wire [$clog2(`N)-1:0] shift_regs_out = rst_v_regs_internal ? grab_regs_A_mid[$clog2(`N)-1:0] : grab_regs_V[$clog2(`N)-1:0];
 
 wire  [7:0]  dout_A_b [TAU-1:0];
 wire  [7:0]  dout_A_m [TAU-1:0];
 
-//reg [$clog2(`N)-1:0] i_star_regs [TAU-1:0];
-//always_ff @ (posedge clk) begin
-//    if (rst) begin
-//        for (int i=0; i<TAU; i=i+1)
-//            i_star_regs[i] <= 8'h0;
+reg [$clog2(`N)-1:0] i_star_regs [TAU-1:0];
+always_ff @ (posedge clk) begin
+    if (rst) begin
+        for (int i=0; i<TAU; i=i+1)
+            i_star_regs[i] <= 8'h0;
             
-//    end else if (load_i_star) begin
-//        i_star_regs[TAU-1] <= i_star;
+    end else if (load_i_star) begin
+        i_star_regs[TAU-1] <= i_star;
         
-//        for (int i=0; i<TAU-1; i=i+1)
-//            i_star_regs[i] <= i_star_regs[i+1];
-//    end        
-//end
+        for (int i=0; i<TAU-1; i=i+1)
+            i_star_regs[i] <= i_star_regs[i+1];
+    end        
+end
 
 reg [$clog2(`N)-1:0] phi_i;
 always @ (posedge clk) begin
-     if (sample_counter=='h1) phi_i <= phi_i_in;
+//     if (sample_counter=='h1) phi_i <= phi_i_in;
+     if (sample_counter=='h9) phi_i <= phi_i_in;
 end
 
 reg load_i_star_pip;
@@ -169,7 +205,7 @@ end
 // v_base / v_rnd write count
 // ***************************
 reg shift_init_next_V;
-localparam SAMPLES_V = 10;
+localparam SAMPLES_V = 16;
 always_ff @ (posedge clk) shift_init_next_V <= (sample_counter==SAMPLES_V-1); // was -2 in the S_base module
 
 localparam SHIFT_COUNT_MAX_V = M_PARAM_RHO-1;
@@ -185,7 +221,7 @@ always_ff @ (posedge clk) begin
         shift_counter_V <= shift_counter_V -1'b1;
 end
 
-reg read_addr_upd_V; //, shift_en_pip;
+//reg read_addr_upd_V; //, shift_en_pip;
 always_ff @ (posedge clk) read_addr_upd_V <= |{shift_init_next_V, shift_counter_V};
 wire shift_en_next_V = read_addr_upd_V;
 reg shift_en_V;
@@ -242,7 +278,7 @@ always_comb begin
         
         ACC_V: begin
             // If initial round, then it is enough to hold read
-            if (~init_acc_round_aes_pip) begin // addresses to the all-zero address.
+            if (~init_acc_round_aes_internal) begin // addresses to the all-zero address.
                 if (read_addr_upd_V)
                     V_addr_opc = incr_V_addr;
                 else
@@ -345,17 +381,20 @@ always_ff @ (posedge clk) begin // grab_regs_V update
     
     else if (acc_sample_valid) begin
         case (sample_counter)
-            'h7: begin
-                grab_regs_V[0+:16] <= acc_sample[`WORD_SIZE-1 -: 16];
-             end
+            'hb:
+                grab_regs_V[0+:32] <= acc_sample[`WORD_SIZE-1 -: 32];
              
-             'h8: begin
-                grab_regs_V[16+:`WORD_SIZE] <= acc_sample;
-             end
+             'hc:
+                grab_regs_V[32+:`WORD_SIZE] <= acc_sample;
              
-             'h9: begin
-                grab_regs_V[GRAB_REG_V_LEN-48+:48] <= acc_sample;
-             end
+             'hd:
+                grab_regs_V[32+`WORD_SIZE+:`WORD_SIZE] <= acc_sample;
+             
+             'he:
+                grab_regs_V[32+2*`WORD_SIZE+:`WORD_SIZE] <= acc_sample;
+             
+             'hf:
+                grab_regs_V[GRAB_REG_V_LEN-1 : 32+3*`WORD_SIZE] <= acc_sample;
         endcase
     end
     
@@ -366,6 +405,10 @@ always_ff @ (posedge clk) begin // grab_regs_V update
             grab_regs_A_mid[0 +: 64] <= a_mid_word;
         if (a_mid_in_valid_train[1])
             grab_regs_A_mid[64+: 64] <= a_mid_word;
+        if (a_mid_in_valid_train[2])
+            grab_regs_A_mid[2*64 +: 64] <= a_mid_word;
+        if (a_mid_in_valid_train[3])
+            grab_regs_A_mid[3*64+: 64] <= a_mid_word;
     end
     
     a_mid_in_valid_train <= {a_mid_in_valid_train, a_mid_word_valid};

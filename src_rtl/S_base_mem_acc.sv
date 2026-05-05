@@ -1,3 +1,24 @@
+/*
+ * S_base_mem_acc.sv
+ * -----------
+ * This file implements an array of simple Dual-Port Ram instances used to
+ * accumulate and store the S_base matrices for all MPCitH protocol iterations.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "math.vh"
 `include "mirath_hw_params.vh"
 
@@ -9,11 +30,10 @@ module S_base_mem_acc #(
     parameter M_PARAM_R = `M_PARAM_R,
     parameter M_PARAM_K = `M_PARAM_K,
     parameter WORD_SIZE = `WORD_SIZE,
-    parameter S_BASE_MEM_DEPTH = `GET_NIBBLES(M_PARAM_M)*M_PARAM_R+1,
-    parameter C_MEM_DEPTH = M_PARAM_N-M_PARAM_R+2,
+    parameter S_BASE_MEM_DEPTH = `GET_BYTES(M_PARAM_M)*M_PARAM_R+1,
     parameter TAU = `TAU,
-    parameter SAMPLE_COUNT = 10, // TODO: parametrize for all levels
-    parameter MEM_WIDTH_BYTES = 4
+    parameter SAMPLE_COUNT = `SAMPLE_COUNT,
+    parameter MEM_WIDTH_BYTES = 8
 )(
     input wire rst,
     input wire clk,
@@ -35,10 +55,10 @@ module S_base_mem_acc #(
 //reg phi_i_pip;
 //always_ff @ (posedge clk) phi_i_pip <= phi_i;
 
-localparam GRAB_REG_LEN = (`ROUND_TO_4(M_PARAM_M)*(M_PARAM_R-1)) +M_PARAM_M;
+localparam GRAB_REG_LEN = (`ROUND_TO_8(M_PARAM_M)*(M_PARAM_R-1)) +M_PARAM_M;
 reg [GRAB_REG_LEN-1:0] grab_regs;
 
-reg [31:0] phi_i_times_S;
+reg [63:0] phi_i_times_S;
 always_ff @ (posedge clk) begin
     if (!grab_regs[0])
         phi_i_times_S[7:0] <= 8'h0;
@@ -59,6 +79,26 @@ always_ff @ (posedge clk) begin
         phi_i_times_S[31:24] <= 8'h0;
     else
         phi_i_times_S[31:24] <= phi_i;
+
+    if (!grab_regs[4])
+        phi_i_times_S[39:32] <= 8'h0;
+    else
+        phi_i_times_S[39:32] <= phi_i;
+
+    if (!grab_regs[5])
+        phi_i_times_S[47:40] <= 8'h0;
+    else
+        phi_i_times_S[47:40] <= phi_i;
+
+    if (!grab_regs[6])
+        phi_i_times_S[55:48] <= 8'h0;
+    else
+        phi_i_times_S[55:48] <= phi_i;
+
+    if (!grab_regs[7])
+        phi_i_times_S[63:56] <= 8'h0;
+    else
+        phi_i_times_S[63:56] <= phi_i;
 end
 
 reg shift_en; //, shift_en_pip;
@@ -74,20 +114,23 @@ always_ff @ (posedge clk) begin // grab_regs update
     
     else if (acc_sample_valid) begin
         case (sample_counter)
-            'h0: begin
-                grab_regs[M_PARAM_M-1 : 0] <= acc_sample[M_PARAM_M-1 : 0];
-                grab_regs[63-4 : `ROUND_TO_4(M_PARAM_M)] <= acc_sample[63 : `ROUND_TO_8(M_PARAM_M)];
-             end
+            'h0:
+                grab_regs[64-1 : 0] <= acc_sample;
+                
+            'h1:
+                grab_regs[2*64-1 : 64] <= acc_sample;
              
-             'h1: begin
-                grab_regs[M_PARAM_M+`ROUND_TO_4(M_PARAM_M)-1 : 60] <= acc_sample[M_PARAM_M +`ROUND_TO_8(M_PARAM_M)-64-1 : 0];
-                grab_regs[127-8 : 2*`ROUND_TO_4(M_PARAM_M)] <= acc_sample[127-64 : 2*`ROUND_TO_8(M_PARAM_M)-64];
-             end
+            'h2:
+                grab_regs[3*64-1 : 2*64] <= acc_sample;
              
-             'h2: begin
-                grab_regs[M_PARAM_M+2*`ROUND_TO_4(M_PARAM_M)-1 : 120] <= acc_sample[M_PARAM_M+2*`ROUND_TO_8(M_PARAM_M)-1-128 : 0];
-                grab_regs[M_PARAM_M+3*`ROUND_TO_4(M_PARAM_M)-1 : 3*`ROUND_TO_4(M_PARAM_M)] <= acc_sample[M_PARAM_M+3*`ROUND_TO_8(M_PARAM_M)-1-128 : 3*`ROUND_TO_8(M_PARAM_M)-128];
-             end
+            'h3:
+                grab_regs[4*64-1 : 3*64] <= acc_sample;
+             
+            'h4:
+                grab_regs[5*64-1 : 4*64] <= acc_sample;
+             
+            'h5:
+                grab_regs[GRAB_REG_LEN-1 : 5*64] <= acc_sample;
         endcase
     end
 end

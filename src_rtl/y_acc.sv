@@ -1,3 +1,23 @@
+/*
+ * y_acc.sv
+ * --------
+ * This file computes the vector y as  y = e_A + H' * e_B
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "mirath_hw_params.vh"
 `include "math.vh"
 
@@ -46,7 +66,7 @@ always_ff @ (posedge clk) begin
     if (rst)
         H_row_div_8_counter <= H_ROWS_BYTE_ALIGNED-1'b1;
     else if (acc_en) begin
-        if (H_row_div_8_counter<=('h7))
+        if (H_row_div_8_counter < ('h8))
             H_row_div_8_counter <= H_row_div_8_counter + H_ROWS_BYTE_ALIGNED-'h8;
         else
             H_row_div_8_counter <= H_row_div_8_counter -'h8;
@@ -65,12 +85,12 @@ end
 reg [$clog2(9)-1:0] valid_E_bits;
 always_ff @ (posedge clk) begin
     if (rst)
-        valid_E_bits <= 'h5;
+        valid_E_bits <= 'h3;
     else if (acc_y_state==S_Y_ACC) begin
         if (update_hold_regs) begin
-            if (S_row_counter=='h0)
-                valid_E_bits <= 'h3;
-            else
+//            if (S_row_counter=='h0)
+//                valid_E_bits <= 'h3;
+//            else
                 valid_E_bits <= 'h9;
         end else if (keccak_dout_valid && (H_row_div_8_counter<8))
             valid_E_bits <= valid_E_bits-1'b1;
@@ -171,29 +191,31 @@ generate
                 if (i<(REG_LEN-64))
                     y_regs[i] <= y_regs[i+64];
                 else begin
-                    if (IN_S < 8) begin
+//                    if (IN_S < 8) begin
                         y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[0]);
-                    end else if (IN_S < 16) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter!= 0) ? 0 : 1]);
-                    end else if (IN_S < 24) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 1) ? 0 : 1]);
-                    end else if (IN_S < 32) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 2) ? 0 : 1]);
-                    end else if (IN_S<40) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 3) ? 0 : 1]);
-                    end else if (IN_S < 48) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 4) ? 0 : 1]);
-                    end else if (IN_S < 56) begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 5) ? 0 : 1]);
-                    end else begin
-                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 6) ? 0 : 1]);
-                    end
+//                    end else if (IN_S < 16) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter!= 0) ? 0 : 1]);
+//                    end else if (IN_S < 24) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 1) ? 0 : 1]);
+//                    end else if (IN_S < 32) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 2) ? 0 : 1]);
+//                    end else if (IN_S<40) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 3) ? 0 : 1]);
+//                    end else if (IN_S < 48) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 4) ? 0 : 1]);
+//                    end else if (IN_S < 56) begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 5) ? 0 : 1]);
+//                    end else begin
+//                        y_regs[i] <= y_regs[IN_S] ^ (keccak_dout[IN_S] & E_byte_hold_shift_regs[(H_row_div_8_counter > 6) ? 0 : 1]);
+//                    end
                 end
             end
         end
     end
-endgenerate   
-       
+endgenerate
+
+wire debug_wire = (H_row_div_8_counter=='h4f);
+
 // *******************************************
 // Build small FSM to simplify external comms   
 always_ff @ (posedge clk) acc_y_state  <=  rst ?  S_Y_IDLE : acc_y_state_next; // State update
@@ -234,7 +256,8 @@ always_comb begin
     endcase // acc_y_state
 end
 
-assign y_out = {y_regs[0+:24], y_regs[REG_LEN-1-:40]}; // TODO: Parametrize
+//assign y_out = {y_regs[0+:24], y_regs[REG_LEN-1-:40]}; // TODO: Parametrize
+assign y_out = y_regs[`WORD_SIZE-1:0]; // TODO: Parametrize
 
 wire [1:0] debug_wire = E_byte_hold_shift_regs;
 

@@ -39,8 +39,9 @@ initial begin
     #(1*clk_period);
     tb_start = 'h0;
     
+//    # (161200*clk_period);
     wait(tb_done);
-    //    # (161200*clk_period);
+    
     $finish;
 end
 

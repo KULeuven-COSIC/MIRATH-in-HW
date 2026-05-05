@@ -1,3 +1,25 @@
+/*
+ * mirath_ff_math_wrap.sv
+ * -------------
+ * This file houses the Witness buffers S_mem and C_mem (holding the
+ * secret matrices S and C', respectively) and MatSC MUL airthmetic
+ * core used to compute S*C'.
+ *
+ * Copyright (c) 2026 KU Leuven - COSIC
+ * Author: Stelios Manasidis    
+ *        
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+ 
 `include "math.vh"
 `include "mirath_hw_params.vh"
 `include "E_mul_defines.svh"
@@ -179,9 +201,9 @@ always_ff @ (posedge clk) begin // update S_mem_addr
             
             move_up_S_column: S_mem_addr <= S_mem_addr +`GET_BYTES(M_PARAM_M);
             
-            start_next_S_row: S_mem_addr <= S_mem_addr -(3*`GET_BYTES(M_PARAM_M) -1);
+            start_next_S_row: S_mem_addr <= S_mem_addr -((M_PARAM_R-1)*`GET_BYTES(M_PARAM_M) -1);
             
-            goto_start_of_S_row: S_mem_addr <= S_mem_addr -(3*`GET_BYTES(M_PARAM_M));
+            goto_start_of_S_row: S_mem_addr <= S_mem_addr -((M_PARAM_R-1)*`GET_BYTES(M_PARAM_M));
         endcase
     end
 end
@@ -228,8 +250,8 @@ always_ff @ (posedge clk) begin
         
         rst_count: S_col_counter <= 'h0;
             
-        incr_count: S_col_counter <= S_col_counter + 1'b1;
-//        incr_count: S_col_counter <= (S_col_counter==M_PARAM_R-1) ? 'h0 : S_col_counter + 1'b1; // More general and easy to work with: already works for L1 without explicit call
+//        incr_count: S_col_counter <= S_col_counter + 1'b1;
+        incr_count: S_col_counter <= (S_col_counter==M_PARAM_R-1) ? 'h0 : S_col_counter + 1'b1; // More general and easy to work with: already works for L1 without explicit call
     endcase
 end
 
@@ -250,9 +272,9 @@ always_ff @ (posedge clk) begin
         incr_count: S_row_sel_counter <= S_row_sel_counter + 1'b1;
     endcase
 end
+
 // *************************************************************************************************
 // A cheap MAC unit to compute up to 8 elements of the secret matrix E at a time (takes R cycles)
-
 reg E_valid_next;
 always_ff @ (posedge clk) E_byte_valid_to_y_acc <= E_valid_next;
 

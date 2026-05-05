@@ -1,6 +1,7 @@
 #set_property -dict { PACKAGE_PIN H16   IOSTANDARD LVCMOS33 } [get_ports { clk }]
 #create_clock -period 4.0 -waveform {0 2} -name clk -add [get_ports clk]
-create_clock -period 3.9 -waveform {0 1.95} -name clk -add [get_ports clk]
+#create_clock -period 3.96 -waveform {0 1.93} -name clk -add [get_ports clk]
+create_clock -period 4.5 -name clk -add [get_ports clk]
 
 # 0 ns input/output delays w.r.t. the clock
 set_input_delay  0 [get_ports {start[*] rst}]  -clock clk
