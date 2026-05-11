@@ -19,13 +19,15 @@
  *
  */
 
+`default_nettype none
+
 module pipeline_delay #(
     parameter int WIDTH = 8,
     parameter int DEPTH = 1       // DEPTH = 1 => one cycle of delay
 )(
-    input  logic                 clk,
-    input  logic [WIDTH-1:0]     din,
-    output logic [WIDTH-1:0]     dout
+    input  wire                  clk,
+    input  wire  [WIDTH-1:0]     din,
+    output wire  [WIDTH-1:0]     dout
 );
 
     // Pipeline storage
