@@ -160,7 +160,7 @@ mirath_wrapper_v2 DUT (
 always #(half_clk_period) tb_clk = ~tb_clk;
 
 initial begin
-    @(posedge tb_clk); // one warm-up edge
+    @(posedge tb_clk);
     // reset
     #(2.1*clk_period);
     tb_rst = 1'b1;
@@ -179,8 +179,10 @@ initial begin
 //    # (430400*clk_period);
     wait (tb_done);
     t_done_sign = $time;               // tb_done asserted here
-    $display("[%0t] SIGN  : start=%0t done=%0t delta=%0t ps",
-             $time, t_start_sign, t_done_sign, t_done_sign - t_start_sign);
+//    $display("[%0t] SIGN  : start=%0t done=%0t delta=%0t ps",
+//             $time, t_start_sign, t_done_sign, t_done_sign - t_start_sign);
+    $display("[%0t] SIGN: delta = %0d clock cycles", $time, (t_done_sign - t_start_sign)/clk_period);
+
     # (10*clk_period);
 //    $finish;
     
@@ -200,9 +202,10 @@ initial begin
     
     wait (tb_done);
     t_done_ver = $time;                // tb_done asserted here
-    $display("[%0t] VERIFY: start=%0t done=%0t delta=%0t ps",
-             $time, t_start_ver, t_done_ver, t_done_ver - t_start_ver);
-             
+//    $display("[%0t] VERIFY: start=%0t done=%0t delta=%0t ps",
+//             $time, t_start_ver, t_done_ver, t_done_ver - t_start_ver);
+    $display("[%0t] VERIFY: delta = %0d clock cycles", $time, (t_done_ver - t_start_ver)/clk_period);
+    
     if (tb_bad_sig)
       $display("[%0t] VERIFY RESULT: FAIL (tb_bad_sig=1)", $time);
     else
