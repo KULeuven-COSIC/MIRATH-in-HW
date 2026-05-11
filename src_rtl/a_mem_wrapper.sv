@@ -60,11 +60,20 @@ module a_mem_wrapper #(
     output reg                   store_a_done
 );
 
+reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter, sample_counter_pip;
+
+wire  [7:0]  dout_A_b [TAU-1:0];
+wire  [7:0]  dout_A_m [TAU-1:0];
+
 reg a_word_is_mid;
 always_ff @ (posedge clk) a_word_is_mid_out <= a_word_is_mid;
 
 reg [(`M_PARAM_RHO/8)-1:0] a_mid_in_valid_train;
 
+reg read_addr_upd_V;
+reg rst_v_regs_internal;
+wire shift_en_next_V = read_addr_upd_V;
+reg shift_en_V;
 reg init_acc_round_aes_internal;
 always_ff @ (posedge clk) if (~shift_en_next_V && acc_sample_valid) init_acc_round_aes_internal <= init_acc_round_aes_pip;
 
@@ -123,8 +132,6 @@ reg [$clog2(TAU)-1:0] mpc_round_V;
 always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_V_in_pip <=  mpc_round_V_in;
 always_ff @ (posedge clk) if (~shift_en_next_V)  mpc_round_V <=  mpc_round_V_in_pip;
 
-reg read_addr_upd_V;
-reg rst_v_regs_internal;
 always_ff @ (posedge clk) begin
     if (rst_v_regs)
         rst_v_regs_internal <= 1'b1;
@@ -136,9 +143,6 @@ localparam GRAB_REG_V_LEN = 8*M_PARAM_RHO;
 reg [GRAB_REG_V_LEN-1:0] grab_regs_V;
 reg [8*`M_PARAM_RHO-1:0] grab_regs_A_mid;
 wire [$clog2(`N)-1:0] shift_regs_out = rst_v_regs_internal ? grab_regs_A_mid[$clog2(`N)-1:0] : grab_regs_V[$clog2(`N)-1:0];
-
-wire  [7:0]  dout_A_b [TAU-1:0];
-wire  [7:0]  dout_A_m [TAU-1:0];
 
 reg [$clog2(`N)-1:0] i_star_regs [TAU-1:0];
 always_ff @ (posedge clk) begin
@@ -190,7 +194,6 @@ always @ (posedge clk) v_acc_in <= shift_regs_out;
 //end
 
 
-reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter, sample_counter_pip;
 always_ff @ (posedge clk) begin
     sample_counter_pip <= sample_counter;
     
@@ -223,8 +226,6 @@ end
 
 //reg read_addr_upd_V; //, shift_en_pip;
 always_ff @ (posedge clk) read_addr_upd_V <= |{shift_init_next_V, shift_counter_V};
-wire shift_en_next_V = read_addr_upd_V;
-reg shift_en_V;
 always_ff @ (posedge clk) shift_en_V <= shift_en_next_V;
 
 // **************************************************
@@ -248,6 +249,9 @@ typedef enum logic [1:0] { //C_base mem address opcode
 } V_address_opcode_t;
 
 V_address_opcode_t V_addr_opc;
+reg acc_a, acc_a_in_1, acc_a_in_2;
+reg /*init_round,*/ share_split_done;
+
 reg [$clog2(V_MEM_DEPTH)-1:0] re_addr_V;
 always_ff @ (posedge clk) begin // update Cb_mem_addr
     if (rst)
@@ -353,7 +357,6 @@ always_comb begin
     endcase
 end
 
-reg /*init_round,*/ share_split_done;
 always_ff @ (posedge clk) begin // TODO: update for L3 and L5
 //    if (rst)
 //        init_round <= 1'b1;
@@ -415,7 +418,6 @@ always_ff @ (posedge clk) begin // grab_regs_V update
 end
 
 // ****************************************************
-reg acc_a, acc_a_in_1, acc_a_in_2;
 always_ff @ (posedge clk) begin
     if (rst) begin
         acc_a_in_2 <= 1'b0;
