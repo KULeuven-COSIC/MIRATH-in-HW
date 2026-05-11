@@ -26,7 +26,6 @@
 
 //typedef enum logic [1:0] { MODE_GGM, MODE_EXP_LEAF, MODE_COMMIT } aes_mode_t;
 
- // Note: L1 specific
 localparam NUM_EXPANDS = `NUM_EXPANDS;
 localparam CTR_BITS    = `CLOG2(NUM_EXPANDS)-1; // Left result (res0): always 0 LSB. Right result (res1): always 1 LSB.
 
@@ -183,6 +182,7 @@ always @ (posedge clk) begin // always loads from key_sig_mem_dout_byte_rev
     end
 end
 
+wire [255:0] res_aes_0, res_aes_1;
 reg [`NODE_SIZE-1:0] input_seed;
 always @ (posedge clk) begin
     if (load_key_from_res_0)
@@ -212,7 +212,7 @@ endgenerate
 reg [255:0] block_0;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b0, 120'b0}  : {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}}); // 128 - (8+32+8)
 reg [255:0] block_1;// = salt_reg_aes ^ (mode_aes ? {ctr, 1'b1, 120'b0}  : {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_PRG), {'d80{1'b0}}});
 
-// Note: Could indeed try to pipeline if it helps raise fmax
+// Note: Could try to pipeline if it helps raise fmax
 always_comb begin
     case (mode_aes)
         MODE_GGM: begin
@@ -225,14 +225,12 @@ always_comb begin
             block_1 = salt_reg_aes ^ {ctr, 1'b1, 248'b0};
         end
        
-        MODE_COMMIT: begin
+        default: begin
             block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d208{1'b0}}};
             block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d208{1'b0}}};
         end
     endcase
 end
-
-wire [255:0] res_aes_0, res_aes_1;
 
 rijndael256_core_dual_fast rijndael256_core_dual_inst ( // AES / Rijndael datapath instance
     .reset_n    (~rst),
