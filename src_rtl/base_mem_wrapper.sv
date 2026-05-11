@@ -88,6 +88,19 @@ pipeline_delay #(
     .dout ( E_mul_opc_base )
 );
 
+// **************************************************
+// Instantiate an FSM to control reads from the mems
+
+typedef enum logic [2:0] {
+    ACC_BASE,
+    FILL_EA,
+    EMULATE_MPC,
+    WAIT_NEXT_ELEM,
+    DONE
+} state_t;
+
+state_t state, next_state;
+
 //reg verify, start_bit, start_bit_pip;
 //always_ff @ (posedge clk) begin
 //    if (rst) begin
@@ -233,20 +246,6 @@ C_base_mem_acc Cb_mem_acc_inst (
     .shift_en_next      (shift_en_next_Cb),
     .dout               (dout_C_base)
 );
-
-
-// **************************************************
-// Instantiate an FSM to control reads from the mems
-
-typedef enum logic [2:0] {
-    ACC_BASE,
-    FILL_EA,
-    EMULATE_MPC,
-    WAIT_NEXT_ELEM,
-    DONE
-} state_t;
-
-state_t state, next_state;
 
 reg mpc_round_base_MSB_pip, mpc_round_base_MSB_pip_2;
 
