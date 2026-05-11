@@ -127,7 +127,7 @@ module mirath_top_lvl_ctrl_v2 #(
 //    output reg [`DATA_MEM_ADDR_BITS-1:0] data_mem_addr,
     output reg [`KEY_SIG_MEM_ADDR_BITS-1:0] key_sig_mem_addr,
     
-    output reg                           next_E_reg,
+//    output reg                           next_E_reg,
     output reg                           squeeze_y,
     output reg                           key_unpack_done,
     output reg                           store_a_start,
@@ -183,7 +183,7 @@ reg [$clog2(`TAU)-1:0] mpc_round_tl_pip, mpc_round_tl_pip_2, mpc_round_tl_pip_3,
 reg four_counter_incr, four_counter_incr_next;
 
 reg y_word_valid_to_tmp_next, next_y_word_from_tmp_pip;
-reg handshake_pip;//, extra_k_lookahead_update;
+//reg handshake_pip;//, extra_k_lookahead_update;
 reg acc_e_last_word_next;
 wire [`KEY_SIG_MEM_ADDR_BITS-1:0] check_last_acc_e_word = (key_sig_mem_addr-(`AUX_ADDR-1));
 
@@ -221,7 +221,8 @@ reg [`AUX_WORDS-1:0] aux_words_hash_last_word_trigger;
 reg [`WORD_SIZE-1:0]         key_sig_mem_din_next;
 
 reg reject_v_grinding;
-reg next_E, squeeze_y_next;
+//reg next_E;
+reg squeeze_y_next;
 reg init_aux, init_aux_next;
 reg commit_buf_idx;
 
@@ -268,7 +269,7 @@ always_ff @ (posedge clk) begin
     next_verify_round_train     <= {next_verify_round_train, next_verify_round};
 //    data_mem_din                <= data_mem_din_next;
     key_sig_mem_din             <= key_sig_mem_din_next;
-    next_E_reg                  <= next_E;
+//    next_E_reg                  <= next_E;
     squeeze_y                   <= squeeze_y_next;
     key_unpack_done             <= (state_tl == S_EXP_SEED_PK) && keccak_data_done_train[NUM_Y_SQUEEZES-1];
 
@@ -277,7 +278,7 @@ always_ff @ (posedge clk) begin
     incr_mpc_round              <= rst ? 1'b0 : incr_mpc_round_next;
     commit_valid_train          <= {commit_valid_train, commit_valid};
 
-    handshake_pip               <= keccak_din_valid;
+//    handshake_pip               <= keccak_din_valid;
 //    extra_k_lookahead_update    <= (state_tl==S_COMMIT_TL) && (~|commit_valid_train[`COMMIT_WORDS +: (`COMMIT_WORDS+2)] && (keccak_din_valid || handshake_pip));
 
     incr_S_C_addr               <= incr_S_C_addr_next;
@@ -368,7 +369,7 @@ always_comb begin
     wren_key_sig_mem_next   = 1'b0;
 //    data_mem_din_next       = keccak_dout;
     key_sig_mem_din_next    = keccak_dout;
-    next_E                  = 1'b0;
+//    next_E                  = 1'b0;
     squeeze_y_next          = 1'b0;
     
     init_aux_next           = 1'b0;
@@ -457,7 +458,7 @@ always_comb begin
                 incr_S_C_addr_next = 1'b1;
             end    
            
-           next_E = 1'b1;     
+//           next_E = 1'b1;     
         end // S_EXP_SEED_SK
 
 // ************************************************************************************
@@ -781,7 +782,8 @@ always_comb begin
         
 // ********************************************************************
         S_COMPUTE_A: begin            
-            keccak_command_next <= `SHAKE_CMD_64(`COMMIT_SIZE, 8*`MIRATH_VAR_GAMMA);
+//            keccak_command_next <= `SHAKE_CMD_64(`COMMIT_SIZE, 8*`MIRATH_VAR_GAMMA);
+            keccak_command_next = `SHAKE_CMD_64(`COMMIT_SIZE, 8*`MIRATH_VAR_GAMMA);
             key_sig_mem_din_next = a_word;
             
             if (first_state_cycles[1])
