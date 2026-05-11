@@ -486,6 +486,6 @@ always_ff @ (posedge clk) begin
         sign <= 1'b1;
 end
 
-wire [5:0] S_row_debug_wire = {S_row_div8_counter, S_row_sel_counter};
+// wire [5:0] S_row_debug_wire = {S_row_div8_counter, S_row_sel_counter};
 
 endmodule
