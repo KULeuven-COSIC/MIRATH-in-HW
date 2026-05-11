@@ -211,6 +211,6 @@
 // **********************************
 // commit_fifo defines
 `define CMT_FIFO_DEPTH      (2*`COMMIT_WORDS)
-`define CMT_FIFO_ADDR_BITS  (`CLOG2(`H_SUBCTX_MEM_DEPTH))
+`define CMT_FIFO_ADDR_BITS  (`CLOG2(`CMT_FIFO_DEPTH))
 
 `endif
