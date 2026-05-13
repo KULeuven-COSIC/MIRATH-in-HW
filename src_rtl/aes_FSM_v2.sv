@@ -168,6 +168,51 @@ module aes_FSM_v2 #(
     output wire                 cmt_fifo_wren
 ); 
 
+// **************************
+// Define wires and regs
+// ************************
+reg start_asserted, start_en, verify;
+
+reg [$clog2(`N)-1:0] party_idx_aes, party_idx_aes_prev;
+wire [$clog2(`N)-1:0] i_star_mem_dout;
+reg [$clog2(`TAU)-1:0] mpc_round_aes_prev;
+
+reg buff_idx, party_idx_0, party_idx_old_MSB, mpc_round_0, sub_round_0, party_idx_is_i_star, node_in_storage, new_round, next_sub_phase;
+
+reg party_idx_prev_MSB, party_idx_prev_MSB_1C, init_mpc_round, init_mpc_round_next, read_source_next, update_state, update_state_pip, force_state_update_next;
+reg aes_init_next, wren_data_mem_next, wren_key_sig_mem_next, aes_core_ready_in_1, aes_core_ready_in_2, aes_core_ready_in_3, last_party_idx, path_len_0;
+reg rst_mpc_round, rst_mpc_round_next, commit_buff_idx, switch_commit_buff, rst_idx_S_CLEAN, node_idx_sub_lvl_2;
+reg ances_state_next_data_mem_addr;
+
+reg [12:0] aes_ready_train;
+reg [6:0]  first_cycles_train;
+reg aes_comm_init_pip, aes_comm_next_pip, aes_comm_next_pip_2;
+
+reg exit_node_reached, exit_fake_expand, node_idx_p1_is_2, store_res_next, load_key_from_res_0_next, load_key_from_res_1_next, load_salt_next, load_seed_next, node_idx_is_target, node_idx_is_target_pip, node_idx_is_target_delayed;
+
+reg [$clog2(`TREE_NODES)-1:0] node_index_p1_aes, target_node_idx, state_exit_node;
+reg [$clog2(`TREE_NODES)-2:0] parent_idx_aes;
+
+reg [4:0] done_train;
+
+wire v_bit_mem_dout;
+reg v_bit_mem_dout_prev, v_bit_mem_dout_prev_2, v_bit_mem_dout_pip;
+reg v_bit_mem_din_0, v_bit_mem_din_next_0, v_bit_mem_din_1, v_bit_mem_din_next_1, v_bit_mem_wren_0, v_bit_mem_wren_1, v_bit_mem_wren_next_0, v_bit_mem_wren_next_1, v_mem_clean_exit;
+
+reg update_forced, accept_path_next, reject_path_next, path_too_big, state_ctr_frozen, path_end_reached, searching_node, node_found, node_found_next, searching_node_next, node_ready, node_ready_next;
+
+reg [$clog2(`TREE_NODES+3)-1:0] v_mem_clean_stop_idx;
+
+reg [SEARCH_CTR_bits-1:0] search_ctr;
+//reg [$clog2(`LEVEL_K+1)-1:0] start_lvl;
+reg par_rev, gp_rev, gr_gp_rev, gr_2_gp_rev;
+reg par_rev_next, gp_rev_next, gr_gp_rev_next, gr_2_gp_rev_next;
+reg state_is_not_s_done_reg;
+
+reg node_idx_sh_left_lsb, node_idx_sh_left_lsb_next;
+
+reg i_star_mem_full;
+
 /*******************************************/
 /* State update & next/prev state tracking */
 /*******************************************/
@@ -251,49 +296,6 @@ always_ff @ (posedge clk) begin
         ST_CTR_COUNT_RST:   state_ctr <= state_ctr_rst_val_reg;
     endcase        
 end
-
-// **************************
-// Define wires and regs
-// ************************
-reg start_asserted, start_en, verify;
-
-reg [$clog2(`N)-1:0] party_idx_aes, party_idx_aes_prev;
-wire [$clog2(`N)-1:0] i_star_mem_dout;
-reg [$clog2(`TAU)-1:0] mpc_round_aes_prev;
-
-reg buff_idx, party_idx_0, party_idx_old_MSB, mpc_round_0, sub_round_0, party_idx_is_i_star, node_in_storage, new_round, next_sub_phase;
-
-reg party_idx_prev_MSB, party_idx_prev_MSB_1C, init_mpc_round, init_mpc_round_next, read_source_next, update_state, update_state_pip, force_state_update_next;
-reg aes_init_next, wren_data_mem_next, wren_key_sig_mem_next, aes_core_ready_in_1, aes_core_ready_in_2, aes_core_ready_in_3, last_party_idx, path_len_0;
-reg rst_mpc_round, rst_mpc_round_next, commit_buff_idx, switch_commit_buff, rst_idx_S_CLEAN, node_idx_sub_lvl_2;
-reg ances_state_next_data_mem_addr;
-
-reg [12:0] aes_ready_train;
-reg [6:0]  first_cycles_train;
-reg aes_comm_init_pip, aes_comm_next_pip, aes_comm_next_pip_2;
-
-reg exit_node_reached, exit_fake_expand, node_idx_p1_is_2, store_res_next, load_key_from_res_0_next, load_key_from_res_1_next, load_salt_next, load_seed_next, node_idx_is_target, node_idx_is_target_pip, node_idx_is_target_delayed;
-
-reg [$clog2(`TREE_NODES)-1:0] node_index_p1_aes, target_node_idx, state_exit_node;
-reg [$clog2(`TREE_NODES)-2:0] parent_idx_aes;
-
-reg [4:0] done_train;
-
-wire v_bit_mem_dout;
-reg v_bit_mem_dout_prev, v_bit_mem_dout_prev_2, v_bit_mem_dout_pip;
-reg v_bit_mem_din_0, v_bit_mem_din_next_0, v_bit_mem_din_1, v_bit_mem_din_next_1, v_bit_mem_wren_0, v_bit_mem_wren_1, v_bit_mem_wren_next_0, v_bit_mem_wren_next_1, v_mem_clean_exit;
-
-reg update_forced, accept_path_next, reject_path_next, path_too_big, state_ctr_frozen, path_end_reached, searching_node, node_found, node_found_next, searching_node_next, node_ready, node_ready_next;
-
-reg [$clog2(`TREE_NODES+3)-1:0] v_mem_clean_stop_idx;
-
-reg [SEARCH_CTR_bits-1:0] search_ctr;
-//reg [$clog2(`LEVEL_K+1)-1:0] start_lvl;
-reg par_rev, gp_rev, gr_gp_rev, gr_2_gp_rev;
-reg par_rev_next, gp_rev_next, gr_gp_rev_next, gr_2_gp_rev_next;
-reg state_is_not_s_done_reg;
-
-reg node_idx_sh_left_lsb, node_idx_sh_left_lsb_next;
 
 data_mem_addr_opcode_t      data_mem_addr_opc;
 data_mem_wr_addr_opcode_t   data_mem_wr_addr_opc;
@@ -2118,7 +2120,7 @@ mem_dual #(
 // ******************
 reg [$clog2(N)-1:0]     i_star_pip;
 reg                     i_star_valid_pip;
-reg                     i_star_mem_full;
+//reg                     i_star_mem_full;
 reg [$clog2(`TAU)-1:0]  i_star_wr_addr;
 
 simple_dual_port_mem #(
