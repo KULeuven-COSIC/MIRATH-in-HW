@@ -110,6 +110,7 @@ wire load_salt, load_seed_from_mem, read_source;
 wire aes_comm_init, aes_comm_next;
 wire aes_core_res_valid, load_key_from_res_0, load_key_from_res_1, store_res;
 wire aes_core_ready_in_4;
+wire [127:0] res_aes_0, res_aes_1;
 
 assign mem_2_mem_mux_sel = read_source;
 
@@ -225,14 +226,12 @@ always_comb begin
             block_1 = salt_reg_aes ^ {ctr, 1'b1, 120'b0};
         end
        
-        MODE_COMMIT: begin
+        default: begin
             block_0 = salt_reg_aes ^ {8'b0, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d80{1'b0}}};
             block_1 = salt_reg_aes ^ {8'b1, node_index_aes_zero_padded_rev, (`DOMAIN_SEPARATOR_CMT), {'d80{1'b0}}};
         end
     endcase
 end
-
-wire [127:0] res_aes_0, res_aes_1;
 
 //aes_core_dual aes_core_dual_inst ( // AES / Rijndael datapath instance
 aes_core_dual_fast aes_core_dual_inst ( // AES / Rijndael datapath instance
