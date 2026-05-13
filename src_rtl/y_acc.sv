@@ -58,6 +58,23 @@ always_ff @ (posedge clk) rst_y_mul_pip <= rst_y_mul;
 reg E_byte_valid_pip;
 always_ff @ (posedge clk) E_byte_valid_pip <= E_byte_valid;
 
+localparam MAX_COUNT_S_ROWS = `GET_BYTES(`S_ROWS)-1;
+reg [$clog2(MAX_COUNT_S_ROWS+1)-1:0] S_row_counter;
+
+reg [$clog2(9)-1:0] valid_E_bits;
+reg [7:0] keccak_dout_pip;
+reg shift_E_byte, update_hold_regs;
+reg [7:0] E_byte_pip;
+reg [8:0] E_byte_hold_shift_regs;
+reg keccak_dout_valid_hold;
+
+localparam S_WORDS = `MIRATH_VAR_FF_S_BYTES;
+reg [S_WORDS:0] load_phase_0_en;
+
+localparam ST_UPD_CNT_LEN = 'h2;
+localparam e_A_2nd_WORDS = `GET_BYTES(`MIRATH_VAR_FF_Y_BITS - `S_ROWS*`S_COLS)*`ROUND_TO_8(`S_ROWS)/`S_ROWS;
+reg [e_A_2nd_WORDS:0] load_phase_1_en;
+
 // H_row_div_8_counter
 localparam H_ROWS_BYTE_ALIGNED = `GET_BYTES(`MIRATH_VAR_FF_Y_BITS);
 //localparam H_COUNT_MAX = `GET_BYTES(`MIRATH_VAR_FF_Y_BITS);
@@ -73,8 +90,6 @@ always_ff @ (posedge clk) begin
     end
 end
 
-localparam MAX_COUNT_S_ROWS = `GET_BYTES(`S_ROWS)-1;
-reg [$clog2(MAX_COUNT_S_ROWS+1)-1:0] S_row_counter;
 always_ff @ (posedge clk) begin
     if (rst)
         S_row_counter <= 1'b0;
@@ -82,7 +97,6 @@ always_ff @ (posedge clk) begin
         S_row_counter <= (S_row_counter=='h0) ? MAX_COUNT_S_ROWS : (S_row_counter-1'b1);
 end
 
-reg [$clog2(9)-1:0] valid_E_bits;
 always_ff @ (posedge clk) begin
     if (rst)
         valid_E_bits <= 'h5;
@@ -97,12 +111,8 @@ always_ff @ (posedge clk) begin
     end
 end
 
-reg [7:0] keccak_dout_pip;
 always_ff @ (posedge clk) keccak_dout_pip <= keccak_dout[7:0];
 
-reg shift_E_byte, update_hold_regs;
-reg [7:0] E_byte_pip;
-reg [8:0] E_byte_hold_shift_regs;
 always_ff @ (posedge clk) begin
     if (E_byte_valid)
         E_byte_pip <= E_byte;
@@ -118,13 +128,9 @@ always_ff @ (posedge clk) begin
         E_byte_hold_shift_regs[1] <= 1'b0;
 end
 
-reg keccak_dout_valid_hold;
 always_ff @ (posedge clk) keccak_dout_valid_hold <= rst ? 1'b0 :
                                       keccak_dout_valid ? 1'b1 : keccak_dout_valid_hold;
 
-localparam S_WORDS = `MIRATH_VAR_FF_S_BYTES;
-
-reg [S_WORDS:0] load_phase_0_en;
 always_ff @ (posedge clk) begin
     if (rst)
         load_phase_0_en <= 'h0;
@@ -132,10 +138,6 @@ always_ff @ (posedge clk) begin
         load_phase_0_en <= {load_phase_0_en, keccak_dout_valid && ~keccak_dout_valid_hold};
 end
 
-localparam e_A_2nd_WORDS = `GET_BYTES(`MIRATH_VAR_FF_Y_BITS - `S_ROWS*`S_COLS)*`ROUND_TO_8(`S_ROWS)/`S_ROWS;
-
-localparam ST_UPD_CNT_LEN = 'h2;
-reg [e_A_2nd_WORDS:0] load_phase_1_en;
 always_ff @ (posedge clk) begin
     if (rst) begin
         load_phase_1_en     <= 'h1;
@@ -256,30 +258,29 @@ end
 
 assign y_out = {y_regs[0+:24], y_regs[REG_LEN-1-:40]}; // TODO: Parametrize
 
-wire [1:0] debug_wire = E_byte_hold_shift_regs;
+//wire [1:0] debug_wire = E_byte_hold_shift_regs;
 
-reg [63:0] debug_input_word;
-generate
-    for (i=0; i<64; i++) begin
-        if (i < 8) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[0]);
-        end else if (i < 16) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter!= 0) ? 0 : 1]);
-        end else if (i < 24) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 1) ? 0 : 1]);
-        end else if (i < 32) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 2) ? 0 : 1]);
-        end else if (i<40) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 3) ? 0 : 1]);
-        end else if (i < 48) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 4) ? 0 : 1]);
-        end else if (i < 56) begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 5) ? 0 : 1]);
-        end else begin
-            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 6) ? 0 : 1]);
-        end
-    end
-endgenerate
+//reg [63:0] debug_input_word;
+//generate
+//    for (i=0; i<64; i++) begin
+//        if (i < 8) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[0]);
+//        end else if (i < 16) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter!= 0) ? 0 : 1]);
+//        end else if (i < 24) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 1) ? 0 : 1]);
+//        end else if (i < 32) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 2) ? 0 : 1]);
+//        end else if (i<40) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 3) ? 0 : 1]);
+//        end else if (i < 48) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 4) ? 0 : 1]);
+//        end else if (i < 56) begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 5) ? 0 : 1]);
+//        end else begin
+//            assign debug_input_word[i] = (keccak_dout[i] & E_byte_hold_shift_regs[(H_row_div_8_counter > 6) ? 0 : 1]);
+//        end
+//    end
+//endgenerate
 
 endmodule
-
