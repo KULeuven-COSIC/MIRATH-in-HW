@@ -47,7 +47,7 @@ module keccak_wrapper #(
     
     output wire [KECCAK_WIN-1:0] k2c_dout,
     output wire k2c_dout_valid,
-    output wire c2k_din_ready,
+    // output wire c2k_din_ready,
     output wire data_done,
     output wire input_done,
     output wire rst_y_mul
