@@ -47,10 +47,10 @@ module keccak_wrapper #(
     
     output wire [KECCAK_WIN-1:0] k2c_dout,
     output wire k2c_dout_valid,
-    output wire c2k_din_ready,
+//    output wire c2k_din_ready,
     output wire data_done,
-    output wire input_done,
-    output wire rst_y_mul
+    output wire input_done//,
+//    output wire rst_y_mul
 );
 
 wire squeeze_done, c2k_dout_valid;
@@ -97,7 +97,7 @@ keccak_top_64 keccak_inst (
     
     .squeeze_done           (squeeze_done),
     .consume_buffer         (consume_buffer),
-    .rst_y_mul              (rst_y_mul)
+//    .rst_y_mul              (rst_y_mul)
 );
 
 keccak_to_control_router k2c_router (
