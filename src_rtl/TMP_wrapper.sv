@@ -52,12 +52,42 @@ module TMP_wrapper #(
     output reg [7:0]        tmp_dout_base [`TAU-1:0],
     output reg [7:0]        tmp_dout_mid [`TAU-1:0]
 );
+
+typedef enum logic [1:0] {
+    FILL_eA,
+    ACC_H_eB,
+    COMPUTE_A,
+    DONE
+} state_tmp_t;
+
+state_tmp_t state_tmp, next_state_tmp;
+
 reg [8*`TAU-1:0]        i_star_regs;
 reg [`WORD_SIZE-1:0]    y_word_reg;
 
 reg [TMP_MEM_W-1:0]  dout_tmp_base [TAU-1:0]; // TMP_MEM_W = 8 * 8
 reg [TMP_MEM_W-1:0]  dout_tmp_mid  [TAU-1:0];
 reg [2:0] H_row_sub_ctr, H_row_sub_ctr_pip;
+reg next_E_ff_mu_comb, H_done_pip;
+reg E_mul_res_valid, E_mul_res_valid_pip;
+reg         H_valid_pip, H_valid_pip_2, H_valid_pip_3;
+reg [7:0]   H_elements_pip;
+reg [7:0]        E_base_elem [`TAU-1:0];
+reg [7:0]        E_mid_elem [`TAU-1:0];
+reg [$clog2(TMP_MEM_D)-1:0] wr_addr_TMP, re_addr_TMP;
+reg incr_wr_addr, incr_wr_addr_next, incr_re_addr;
+
+localparam H_ROWS_DIV_8 = `GET_BYTES(M_VAR_E_A);
+reg [$clog2(H_ROWS_DIV_8)-1:0] H_row_div_8_ctr;
+
+localparam MAX_COUNT_RHO_CTR = `M_PARAM_RHO-1;
+localparam RHO_CTR_BITS      = $clog2(MAX_COUNT_RHO_CTR);
+reg [RHO_CTR_BITS-1:0] rho_ctr;
+reg incr_rho_ctr;
+reg incr_H_row_ctr, incr_H_sub_row_ctr;
+reg rst_H_sub_row_ctr;
+reg first_e_B_loaded;
+
 always_ff @ (posedge clk) begin
     H_row_sub_ctr_pip <= H_row_sub_ctr;
     
@@ -67,23 +97,17 @@ always_ff @ (posedge clk) begin
     end
 end
 
-reg next_E_ff_mu_comb, H_done_pip;
 always_ff @ (posedge clk) next_E_ff_mu <= next_E_ff_mu_comb;
 always_ff @ (posedge clk) H_done_pip <= H_done && state_tmp==ACC_H_eB;
 
-reg E_mul_res_valid, E_mul_res_valid_pip;
 always_ff @ (posedge clk) E_mul_res_valid      <= rst ? 1'b0 : E_mul_res_valid_in_1;
 always_ff @ (posedge clk) E_mul_res_valid_pip  <= rst ? 1'b0 : E_mul_res_valid;
 
-reg         H_valid_pip, H_valid_pip_2, H_valid_pip_3;
-reg [7:0]   H_elements_pip;
 always_ff @ (posedge clk) H_valid_pip_3  <= H_valid_pip_2;
 always_ff @ (posedge clk) H_valid_pip_2  <= H_valid_pip;
 always_ff @ (posedge clk) H_valid_pip    <= H_valid;
 always_ff @ (posedge clk) H_elements_pip <= H_valid ? H_elements : 'h0;
 
-reg [7:0]        E_base_elem [`TAU-1:0];
-reg [7:0]        E_mid_elem [`TAU-1:0];
 always_ff @(posedge clk) begin
     if ((E_mul_res_valid_pip && !first_e_B_loaded)
      || ((wr_addr_TMP==H_ROWS_DIV_8-'h1) && state_tmp==ACC_H_eB && H_valid_pip_2)) begin
@@ -95,17 +119,6 @@ always_ff @(posedge clk) begin
     end
 end
 
-typedef enum logic [1:0] {
-    FILL_eA,
-    ACC_H_eB,
-    COMPUTE_A,
-    DONE
-} state_tmp_t;
-
-state_tmp_t state_tmp, next_state_tmp;
-
-reg [$clog2(TMP_MEM_D)-1:0] wr_addr_TMP, re_addr_TMP;
-reg incr_wr_addr, incr_wr_addr_next, incr_re_addr;
 always_ff @ (posedge clk) begin
     if (rst) begin
         incr_wr_addr <= 1'b0;
@@ -124,14 +137,6 @@ always_ff @ (posedge clk) begin
     end
 end
 
-localparam H_ROWS_DIV_8 = `GET_BYTES(M_VAR_E_A);
-reg [$clog2(H_ROWS_DIV_8)-1:0] H_row_div_8_ctr;
-
-localparam MAX_COUNT_RHO_CTR = `M_PARAM_RHO-1;
-localparam RHO_CTR_BITS      = $clog2(MAX_COUNT_RHO_CTR);
-reg [RHO_CTR_BITS-1:0] rho_ctr;
-reg incr_rho_ctr;
-
 always_ff @ (posedge clk) begin
     if (rst)
         rho_ctr <= 'h0;
@@ -140,9 +145,8 @@ always_ff @ (posedge clk) begin
 //        rho_ctr <= (rho_ctr==MAX_COUNT_RHO_CTR) ? 'h0 : (rho_ctr + 1'b1); // For L3 only
 end
 
-reg incr_H_row_ctr, incr_H_sub_row_ctr;
 //reg rst_H_row_ctr;
-reg rst_H_sub_row_ctr;
+
 always_ff @ (posedge clk) begin
     if (rst)
         H_row_div_8_ctr <= 'h0;
@@ -167,7 +171,6 @@ end
 //        eA_first_elements <= 1'b0;
 //end
 
-reg first_e_B_loaded;
 always_ff @ (posedge clk) begin
     if (rst)
         first_e_B_loaded <= 1'b0;
