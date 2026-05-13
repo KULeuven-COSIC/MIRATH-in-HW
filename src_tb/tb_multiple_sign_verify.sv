@@ -50,6 +50,12 @@ module tb_multiple_sign_verify;
 
   longint unsigned sign_sum_ns = 0;
   longint unsigned ver_sum_ns  = 0;
+  
+  longint unsigned sign_cycles[];
+  longint unsigned ver_cycles[];
+
+  real sign_median_cycles;
+  real ver_median_cycles;
 
   int num_runs;
 
@@ -185,7 +191,10 @@ module tb_multiple_sign_verify;
   initial begin
     // Optional override: +NUM_RUNS=<n>
     if (!$value$plusargs("NUM_RUNS=%d", num_runs)) num_runs = DEFAULT_NUM_RUNS;
-
+    
+    sign_cycles = new[num_runs];
+    ver_cycles  = new[num_runs];
+    
     @(posedge tb_clk); // warm-up edge
 
     for (int run = 0; run < num_runs; run++) begin
@@ -210,6 +219,8 @@ module tb_multiple_sign_verify;
 //      $display("[%0t] RUN %0d SIGN  : start=%0t done=%0t delta=%0t ps",
 //               $time, run, t_start_sign, t_done_sign, t_done_sign - t_start_sign);
       $display("[%0t] RUN %0d SIGN: delta = %0d cycles", $time, run, (t_done_sign - t_start_sign)/clk_period);
+    
+      sign_cycles[run] = (t_done_sign - t_start_sign)/clk_period;
 
       sign_sum_ns += (t_done_sign - t_start_sign);
 
@@ -243,6 +254,8 @@ module tb_multiple_sign_verify;
 //      $display("[%0t] RUN %0d VERIFY: start=%0t done=%0t delta=%0t ps",
 //               $time, run, t_start_ver, t_done_ver, t_done_ver - t_start_ver);
       $display("[%0t] RUN %0d VERIFY: delta = %0d cycles", $time, run, (t_done_ver - t_start_ver)/clk_period);
+    
+      ver_cycles[run] = (t_done_ver - t_start_ver)/clk_period;
 
       ver_sum_ns += (t_done_ver - t_start_ver);
 
@@ -259,9 +272,27 @@ module tb_multiple_sign_verify;
     end
 
     // All runs passed if we got here
+    
+    // Print averages
     $display("==== AVERAGES over %0d runs ====", num_runs);
     $display("AVG SIGN  delta = %0d cycles", sign_sum_ns / (num_runs*clk_period));
     $display("AVG VERIFY delta = %0d cycles", ver_sum_ns  / (num_runs*clk_period));
+    
+    
+    // Print medians
+    sign_cycles.sort();
+    ver_cycles.sort();
+
+    if (num_runs % 2) begin
+      sign_median_cycles = real'(sign_cycles[num_runs/2]);
+      ver_median_cycles  = real'(ver_cycles[num_runs/2]);
+    end else begin
+      sign_median_cycles = (real'(sign_cycles[num_runs/2 - 1]) + real'(sign_cycles[num_runs/2])) / 2.0;
+      ver_median_cycles  = (real'(ver_cycles[num_runs/2 - 1])  + real'(ver_cycles[num_runs/2]))  / 2.0;
+    end
+
+    $display("MEDIAN SIGN  delta = %.3f cycles", sign_median_cycles);
+    $display("MEDIAN VERIFY delta = %.3f cycles", ver_median_cycles);    
 
     $finish;
   end
