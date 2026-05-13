@@ -48,7 +48,7 @@ reg  [`WORD_SIZE-1:0] key_sig_mem_din_0, key_sig_mem_din_1, data_mem_din_0, data
 wire [`WORD_SIZE-1:0] data_mem_dout_0, data_mem_dout_1, key_sig_mem_dout_0, key_sig_mem_dout_1;
 
 wire [`WORD_SIZE-1:0] keccak_command, keccak_din, keccak_dout;
-wire mem_2_mem_mux_sel_aes, key_extract_done, keccak_done, c2k_din_valid, k2c_dout_valid, c2k_din_ready, k2c_shift_bytes;
+wire mem_2_mem_mux_sel_aes, key_extract_done, keccak_done, c2k_din_valid, k2c_dout_valid, k2c_shift_bytes;
 wire keccak_input_data_done;
 
 wire [CLOG2_WORD_BYTES:0] keccak_bytelen_din;
@@ -323,7 +323,7 @@ keccak_wrapper keccak_inst (
     // Outputs
     .k2c_dout         ( keccak_dout ),
     .k2c_dout_valid   ( k2c_dout_valid ),
-    .c2k_din_ready    ( c2k_din_ready ),
+//    .c2k_din_ready    ( c2k_din_ready ),
     .data_done        ( keccak_done ),
     .rst_y_mul        ( rst_y_mul ),
     .input_done  ( keccak_input_data_done )
