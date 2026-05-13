@@ -106,27 +106,41 @@ pipeline_delay #(
 //    end
 //end
 
+// **************************************************
+// Instantiate an FSM to control reads from the mems
+typedef enum logic [2:0] {
+    ACC_BASE,
+    FILL_EA,
+    EMULATE_MPC,
+    WAIT_NEXT_ELEM,
+    DONE
+} state_t;
+
+state_t state, next_state;
+
 reg [8*`TAU-1:0] i_star_regs;
 reg       E_mul_choose_p;
 always_ff @ (posedge clk) E_mul_choose_p <= (state==FILL_EA);
 
+reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter;
 reg [7:0] phi_i, phi_i_pip;
 always_ff @ (posedge clk) if (sample_counter=='h1) phi_i <= phi_i_in;
 always_ff @ (posedge clk) phi_i_pip <= phi_i;
 
-reg [$clog2(TAU)-1:0] mpc_round_base_wrap;
-always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_base_wrap <=  mpc_round_base_wrap_in;
-
 reg phi_i_change;
-always_ff @ (posedge clk) phi_i_change <= (phi_i != phi_i_pip);
-
 reg [$clog2(S_BASE_MEM_DEPTH)-1:0] Sb_re_addr;
 reg [$clog2(C_BASE_MEM_DEPTH)-1:0] Cb_re_addr;
 
 wire  [8*S_MEM_WIDTH_BYTES-1:0]  dout_S_base [TAU-1:0];
 wire  [8*C_MEM_WIDTH_BYTES-1:0]  dout_C_base [TAU-1:0];
 
-reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter;
+reg       E_mul_res_valid_next;
+
+reg [$clog2(TAU)-1:0] mpc_round_base_wrap;
+always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_base_wrap <=  mpc_round_base_wrap_in;
+
+always_ff @ (posedge clk) phi_i_change <= (phi_i != phi_i_pip);
+
 always_ff @ (posedge clk) begin
     if (rst)
         sample_counter <= 'h0;
@@ -135,7 +149,6 @@ always_ff @ (posedge clk) begin
                         ? 'h0 : (sample_counter + 1'b1);
 end
 
-reg       E_mul_res_valid_next;
 always_ff @ (posedge clk) E_mul_res_valid <= rst ? 1'b0 : E_mul_res_valid_next;
 
 // **************************
@@ -228,20 +241,6 @@ C_base_mem_acc Cb_mem_acc_inst (
     .shift_en_next      (shift_en_next_Cb),
     .dout               (dout_C_base)
 );
-
-
-// **************************************************
-// Instantiate an FSM to control reads from the mems
-
-typedef enum logic [2:0] {
-    ACC_BASE,
-    FILL_EA,
-    EMULATE_MPC,
-    WAIT_NEXT_ELEM,
-    DONE
-} state_t;
-
-state_t state, next_state;
 
 reg mpc_round_base_MSB_pip, mpc_round_base_MSB_pip_2;
 
