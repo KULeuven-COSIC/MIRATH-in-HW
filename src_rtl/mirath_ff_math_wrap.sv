@@ -52,7 +52,35 @@ module mirath_ff_math_wrap #(
     output reg                  C_elem_out
 );
 
+reg keccak_dout_valid_pip;//, next_pip;
+reg [7:0] keccak_dout_byte_pip;
+reg ff_math_en;
+reg sign;
+reg S_addr_incr_reg;
+wire [7:0]           S_mem_dout;
+wire [M_PARAM_R-1:0] C_mem_dout;
+reg S_stored, S_stored_in_1;
+reg C_stored, C_stored_pip, C_stored_in_1;
 reg rst_output_elems, rst_output_elems_pip, C_elem_out_next;
+
+// ********************************************************************
+// 2 counters to book-keep where we are at in the multiplications
+
+typedef enum logic [1:0] { // counter opcode
+    hold_count,
+    rst_count,
+    incr_count
+} counter_opcode_t;
+
+counter_opcode_t S_col_counter_opc;
+counter_opcode_t S_row_div8_counter_opc;
+counter_opcode_t S_row_sel_counter_opc;
+
+reg [$clog2(`GET_BYTES(M_PARAM_M))-1:0] S_row_div8_counter;
+reg [$clog2(`GET_BYTES(M_PARAM_M))-1:0] S_row_sel_counter, S_row_sel_counter_pip;
+reg [$clog2(M_PARAM_R)-1:0] S_col_counter;
+reg [$clog2(M_PARAM_R)-1:0] C_row_sel;
+
 always_ff @ (posedge clk) begin
     rst_output_elems_pip <= rst_output_elems;
     if (rst_output_elems_pip) begin
@@ -66,9 +94,6 @@ always_ff @ (posedge clk) begin
         C_elem_out_next <= C_mem_dout[C_row_sel];
     end
 end
-
-reg keccak_dout_valid_pip;//, next_pip;
-reg [7:0] keccak_dout_byte_pip;
 
 always_ff @ (posedge clk) begin // Pipeline inputs
 //    next_pip              <= next;
@@ -89,11 +114,6 @@ typedef enum logic [2:0] {
 
 state_t state, next_state;
 
-reg ff_math_en;
-reg sign;
-reg S_addr_incr_reg;
-always_ff @ (posedge clk) S_addr_incr_reg <= S_addr_opc == incr_S_addr;
-
 // ***************************************
 // Define & work with mems and addresses
 // ***************************************
@@ -103,11 +123,31 @@ localparam S_BASE_MEM_DEPTH = `GET_NIBBLES(M_PARAM_M)*M_PARAM_R+1;
 localparam C_MEM_DEPTH = M_PARAM_N-M_PARAM_R+2;
 localparam FULL_ZEROS_C_ADDR = C_MEM_DEPTH-'h2;
 
-wire [7:0]           S_mem_dout;
-wire [M_PARAM_R-1:0] C_mem_dout;
+reg [$clog2(S_MEM_DEPTH)-1:0]   S_mem_addr;
+reg [$clog2(C_MEM_DEPTH)-1:0]   C_mem_addr;
 
-reg S_stored, S_stored_in_1;
-reg C_stored, C_stored_pip, C_stored_in_1;
+typedef enum logic [2:0] { // S mem address opcode
+    freeze_S_addr,
+    rst_S_addr,
+    incr_S_addr,
+    move_up_S_column,
+    start_next_S_row,
+    goto_start_of_S_row
+} S_address_opcode_t;
+
+S_address_opcode_t S_addr_opc;
+
+typedef enum logic [1:0] { //C mem address opcode
+    freeze_C_addr,
+    rst_C_addr,
+    incr_C_addr,
+//    goto_ones,
+    goto_zero
+} C_address_opcode_t;
+
+C_address_opcode_t C_addr_opc;
+
+always_ff @ (posedge clk) S_addr_incr_reg <= S_addr_opc == incr_S_addr;
 
 //wire S_mem_wren = (state == FILL_S_C_MEMS) && ~S_stored;
 reg S_mem_wren;
@@ -136,9 +176,6 @@ always_ff @ (posedge clk) begin
         C_stored_in_1 <= 1'b1;
 end
 
-reg [$clog2(S_MEM_DEPTH)-1:0]   S_mem_addr;
-reg [$clog2(C_MEM_DEPTH)-1:0]   C_mem_addr;
-
 S_mem #(
     .M_PARAM_M(M_PARAM_M),
     .M_PARAM_N(M_PARAM_N),
@@ -166,27 +203,6 @@ C_mem #(
     
     .dout   (C_mem_dout)
 );
-
-typedef enum logic [2:0] { // S mem address opcode
-    freeze_S_addr,
-    rst_S_addr,
-    incr_S_addr,
-    move_up_S_column,
-    start_next_S_row,
-    goto_start_of_S_row
-} S_address_opcode_t;
-
-S_address_opcode_t S_addr_opc;
-
-typedef enum logic [1:0] { //C mem address opcode
-    freeze_C_addr,
-    rst_C_addr,
-    incr_C_addr,
-//    goto_ones,
-    goto_zero
-} C_address_opcode_t;
-
-C_address_opcode_t C_addr_opc;
 
 always_ff @ (posedge clk) begin // update S_mem_addr
     if (rst)
@@ -226,23 +242,6 @@ always_ff @ (posedge clk) begin // update C_mem_addr
     end
 end
 
-// ********************************************************************
-// 2 counters to book-keep where we are at in the multiplications
-
-typedef enum logic [1:0] { // counter opcode
-    hold_count,
-    rst_count,
-    incr_count
-} counter_opcode_t;
-
-counter_opcode_t S_col_counter_opc;
-counter_opcode_t S_row_div8_counter_opc;
-counter_opcode_t S_row_sel_counter_opc;
-
-reg [$clog2(`GET_BYTES(M_PARAM_M))-1:0] S_row_div8_counter;
-reg [$clog2(`GET_BYTES(M_PARAM_M))-1:0] S_row_sel_counter, S_row_sel_counter_pip;
-reg [$clog2(M_PARAM_R)-1:0] S_col_counter;
-
 always_ff @ (posedge clk) begin
     S_row_sel_counter_pip <= S_row_sel_counter;
 
@@ -281,8 +280,6 @@ always_ff @ (posedge clk) E_byte_valid_to_y_acc <= E_valid_next;
 reg [7:0] E_acc_regs;
 //always_ff @ (posedge clk) E_byte_to_y_acc <= E_acc_regs;
 assign E_byte_to_y_acc = E_acc_regs;
-
-reg [$clog2(M_PARAM_R)-1:0] C_row_sel;
 
 E_mul_opcode_t E_mul_opcode;
 
