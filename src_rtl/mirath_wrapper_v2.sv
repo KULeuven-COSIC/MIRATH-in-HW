@@ -56,7 +56,7 @@ wire                    i_star_valid_ctrl_2_aes;
 wire                    party_is_i_star_aes_to_ctrl;
 wire                    rst_v_regs;
 wire                    y_word_valid_to_tmp, next_y_word_tmp_to_tl;
-wire                    rst_y_mul;
+//wire                    rst_y_mul;
 
 wire a_mid_valid_to_a_wrap;
 
@@ -323,7 +323,7 @@ keccak_wrapper keccak_inst (
     .k2c_dout_valid   ( k2c_dout_valid ),
 //    .c2k_din_ready    ( c2k_din_ready ),
     .data_done        ( keccak_done ),
-    .rst_y_mul        ( rst_y_mul ),
+//    .rst_y_mul        ( rst_y_mul ),
     .input_done  ( keccak_input_data_done )
 );
 
