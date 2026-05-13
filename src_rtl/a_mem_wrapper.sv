@@ -59,14 +59,45 @@ module a_mem_wrapper #(
     output reg                   a_word_is_mid_out,
     output reg                   store_a_done
 );
+typedef enum logic [2:0] {
+    ACC_V,
+    WAIT_FOR_TMP,
+    COMPUTE_A,
+    STORE_A,
+    DONE
+} state_t;
+
+state_t state_v, next_state_v;
+
+localparam SAMPLES_V = 10;
+reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter, sample_counter_pip;
+reg shift_init_next_V;
+
+localparam SHIFT_COUNT_MAX_V = M_PARAM_RHO-1;
+localparam SHIFT_COUNT_BITS_S_B = $clog2(SHIFT_COUNT_MAX_V+1);
+reg [SHIFT_COUNT_BITS_S_B-1:0] shift_counter_V;
+
+reg read_addr_upd_V; //, shift_en_pip;
+wire shift_en_next_V = read_addr_upd_V;
+reg shift_en_V;
 
 reg a_word_is_mid;
 always_ff @ (posedge clk) a_word_is_mid_out <= a_word_is_mid;
 
 reg [(`M_PARAM_RHO/8)-1:0] a_mid_in_valid_train;
 
+localparam GRAB_REG_V_LEN = 8*M_PARAM_RHO;
+reg [GRAB_REG_V_LEN-1:0] grab_regs_V;
+reg [8*`M_PARAM_RHO-1:0] grab_regs_A_mid;
+wire [$clog2(`N)-1:0] shift_regs_out = rst_v_regs ? grab_regs_A_mid[$clog2(`N)-1:0] : grab_regs_V[$clog2(`N)-1:0];
+
+wire  [7:0]  dout_A_b [TAU-1:0];
+wire  [7:0]  dout_A_m [TAU-1:0];
+
 reg [$clog2(`M_PARAM_RHO)-1:0] rho_ctr;
 reg [$clog2(`TAU)-1:0] mpc_round_a;
+reg acc_a, acc_a_in_1, acc_a_in_2;
+
 reg incr_mpc_round, incr_mpc_round_next, flip_a_word_is_mid, flip_a_word_is_mid_next, a_word_valid_next, last_mpc_round, incr_rho_ctr, fill_a_word, fill_a_word_next;
 always_ff @ (posedge clk) begin
     flip_a_word_is_mid  <= flip_a_word_is_mid_next;
@@ -118,14 +149,6 @@ always_ff @ (posedge clk) keccak_done_pip_3 <= keccak_done_pip_2;
 reg [$clog2(TAU)-1:0] mpc_round_V;
 always_ff @ (posedge clk) if (sample_counter=='h1)  mpc_round_V <=  mpc_round_V_in;
 
-localparam GRAB_REG_V_LEN = 8*M_PARAM_RHO;
-reg [GRAB_REG_V_LEN-1:0] grab_regs_V;
-reg [8*`M_PARAM_RHO-1:0] grab_regs_A_mid;
-wire [$clog2(`N)-1:0] shift_regs_out = rst_v_regs ? grab_regs_A_mid[$clog2(`N)-1:0] : grab_regs_V[$clog2(`N)-1:0];
-
-wire  [7:0]  dout_A_b [TAU-1:0];
-wire  [7:0]  dout_A_m [TAU-1:0];
-
 //reg [$clog2(`N)-1:0] i_star_regs [TAU-1:0];
 //always_ff @ (posedge clk) begin
 //    if (rst) begin
@@ -174,8 +197,6 @@ always @ (posedge clk) v_acc_in <= shift_regs_out;
 //    end        
 //end
 
-
-reg [$clog2(SAMPLE_COUNT+1)-1:0] sample_counter, sample_counter_pip;
 always_ff @ (posedge clk) begin
     sample_counter_pip <= sample_counter;
     
@@ -189,13 +210,7 @@ end
 // ****************************
 // v_base / v_rnd write count
 // ***************************
-reg shift_init_next_V;
-localparam SAMPLES_V = 10;
 always_ff @ (posedge clk) shift_init_next_V <= (sample_counter==SAMPLES_V-1); // was -2 in the S_base module
-
-localparam SHIFT_COUNT_MAX_V = M_PARAM_RHO-1;
-localparam SHIFT_COUNT_BITS_S_B = $clog2(SHIFT_COUNT_MAX_V+1);
-reg [SHIFT_COUNT_BITS_S_B-1:0] shift_counter_V;
 
 always_ff @ (posedge clk) begin
     if (rst)
@@ -206,24 +221,12 @@ always_ff @ (posedge clk) begin
         shift_counter_V <= shift_counter_V -1'b1;
 end
 
-reg read_addr_upd_V; //, shift_en_pip;
 always_ff @ (posedge clk) read_addr_upd_V <= |{shift_init_next_V, shift_counter_V};
-wire shift_en_next_V = read_addr_upd_V;
-reg shift_en_V;
+
 always_ff @ (posedge clk) shift_en_V <= shift_en_next_V;
 
 // **************************************************
 // Instantiate an FSM to control reads from the mems
-
-typedef enum logic [2:0] {
-    ACC_V,
-    WAIT_FOR_TMP,
-    COMPUTE_A,
-    STORE_A,
-    DONE
-} state_t;
-
-state_t state_v, next_state_v;
 
 typedef enum logic [1:0] { //C_base mem address opcode
     freeze_V_addr,
@@ -233,6 +236,9 @@ typedef enum logic [1:0] { //C_base mem address opcode
 } V_address_opcode_t;
 
 V_address_opcode_t V_addr_opc;
+
+reg /*init_round,*/ share_split_done;
+
 reg [$clog2(V_MEM_DEPTH)-1:0] re_addr_V;
 always_ff @ (posedge clk) begin // update Cb_mem_addr
     if (rst)
@@ -338,7 +344,6 @@ always_comb begin
     endcase
 end
 
-reg /*init_round,*/ share_split_done;
 always_ff @ (posedge clk) begin // TODO: update for L3 and L5
 //    if (rst)
 //        init_round <= 1'b1;
@@ -393,7 +398,6 @@ always_ff @ (posedge clk) begin // grab_regs_V update
 end
 
 // ****************************************************
-reg acc_a, acc_a_in_1, acc_a_in_2;
 always_ff @ (posedge clk) begin
     if (rst) begin
         acc_a_in_2 <= 1'b0;
