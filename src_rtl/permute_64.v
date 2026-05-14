@@ -25,7 +25,7 @@
 module permute_64 (
     input  wire [`DATAPATH_WIDTH-1:0]     din, // lane-major
     input  wire [`PARALLEL_SLICES-1:0]    rcin,
-    input  wire [`PARALLEL_SLICES-1:0]    test,
+//    input  wire [`PARALLEL_SLICES-1:0]    test,
     output wire [`DATAPATH_WIDTH-1:0]     dout //also lane-major
 );
 
