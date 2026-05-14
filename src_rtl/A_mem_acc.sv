@@ -35,7 +35,7 @@ module A_mem_acc #(
     input wire clk,
 
     input wire [$clog2(TAU)-1:0] mpc_round_V,
-    input wire [7:0]             phi_i,
+//    input wire [7:0]             phi_i,
     input wire [7:0]             init_elem_Vb,
     input wire [7:0]             init_elem_V,
     input wire [7:0]             gamma_elem,
@@ -45,8 +45,8 @@ module A_mem_acc #(
     input wire                  acc_a,
     input wire                  shift_en_next,
     input wire                  shift_en,
-    input wire                  acc_sample_valid,
-    input wire [WORD_SIZE-1:0]  acc_sample,
+//    input wire                  acc_sample_valid,
+//    input wire [WORD_SIZE-1:0]  acc_sample,
     
     input wire [$clog2(SAMPLE_COUNT)-1:0] sample_counter,
         
