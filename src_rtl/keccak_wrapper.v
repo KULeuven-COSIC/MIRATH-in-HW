@@ -96,7 +96,7 @@ keccak_top_64 keccak_inst (
     .k_din_fifo_addr_re     (k_din_fifo_addr_re),
     
     .squeeze_done           (squeeze_done),
-    .consume_buffer         (consume_buffer),
+    .consume_buffer         (consume_buffer)//,
 //    .rst_y_mul              (rst_y_mul)
 );
 
