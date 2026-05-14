@@ -445,8 +445,8 @@ A_mem_acc A_mem_acc_inst (
     .acc_a            ( acc_a ),
     .shift_en_next    ( shift_en_next_V ),
     .shift_en         ( shift_en_V ),
-    .acc_sample_valid ( acc_sample_valid ),
-    .acc_sample       ( acc_sample ),
+//    .acc_sample_valid ( acc_sample_valid ),
+//    .acc_sample       ( acc_sample ),
 
     .sample_counter   ( sample_counter ),
 
