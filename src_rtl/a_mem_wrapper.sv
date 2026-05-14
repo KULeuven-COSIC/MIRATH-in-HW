@@ -435,7 +435,7 @@ A_mem_acc A_mem_acc_inst (
     .clk              ( clk ),
 
     .mpc_round_V      ( mpc_round_V ),
-    .phi_i            ( phi_i ),
+//    .phi_i            ( phi_i ),
     .init_elem_Vb     ( v_base_acc_in ),
     .init_elem_V      ( v_acc_in ),
     .gamma_elem       ( gamma_delayed ),
