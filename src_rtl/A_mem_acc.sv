@@ -45,8 +45,8 @@ module A_mem_acc #(
     input wire                  acc_a,
     input wire                  shift_en_next,
     input wire                  shift_en,
-    input wire                  acc_sample_valid,
-    input wire [WORD_SIZE-1:0]  acc_sample,
+//    input wire                  acc_sample_valid,
+//    input wire [WORD_SIZE-1:0]  acc_sample,
     
     input wire [$clog2(SAMPLE_COUNT)-1:0] sample_counter,
         
