@@ -35,7 +35,7 @@ module A_mem_acc #(
     input wire clk,
 
     input wire [$clog2(TAU)-1:0] mpc_round_V,
-    input wire [7:0]             phi_i,
+//    input wire [7:0]             phi_i,
     input wire [7:0]             init_elem_Vb,
     input wire [7:0]             init_elem_V,
     input wire [7:0]             gamma_elem,
