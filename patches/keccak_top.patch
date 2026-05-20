@@ -1,5 +1,5 @@
---- cshake-core/verilog/keccak_top.v	2026-03-13 08:22:43.195849336 +0100
-+++ src_rtl/keccak_top_64.v	2026-03-13 09:58:50.896218113 +0100
+--- ../cshake-core/verilog/keccak_top.v	2026-03-17 12:13:24.193513675 +0100
++++ keccak_top_64.v	2026-05-14 12:42:13.000000000 +0200
 @@ -1,13 +1,15 @@
 -
  /*
@@ -54,7 +54,7 @@
 +    output wire [`WOUT-1:0] dout,
 +    
 +    output wire consume_buffer,
-+    output wire keccak_idle,
++//    output wire keccak_idle,
 +    output wire squeeze_done,
 +    output wire rst_y_mul,
 +    output wire [`K_FIFO_ADDR_BITS-1:0] k_din_fifo_addr_re
@@ -113,7 +113,7 @@
 +    .state_update_en    (state_update_en),
 +    .counter_fwd        (counter),
 +    .shake_mode         (shake_mode),
-+    .keccak_idle        (keccak_idle),
++//    .keccak_idle        (keccak_idle),
 +    .squeeze_done       (squeeze_done),
 +    .consume_buffer     (consume_buffer),
 +    .rst_y_mul          (rst_y_mul),

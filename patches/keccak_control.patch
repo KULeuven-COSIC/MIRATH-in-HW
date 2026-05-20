@@ -1,5 +1,5 @@
---- cshake-core/verilog/control_path.v	2026-03-13 08:22:43.195849336 +0100
-+++ src_rtl/keccak_control_64.v	2026-03-13 09:58:50.889217923 +0100
+--- ../cshake-core/verilog/control_path.v	2026-03-17 12:13:24.193513675 +0100
++++ keccak_control_64.v	2026-05-14 12:42:40.000000000 +0200
 @@ -1,14 +1,12 @@
 -
  /*
@@ -19,7 +19,7 @@
   * This program is free software; you can redistribute it and/or modify
   * it under the terms of the GNU General Public License as published by
   * the Free Software Foundation; either version 3 of the License, or
-@@ -25,886 +23,395 @@
+@@ -25,886 +23,394 @@
   *
  */
  
@@ -330,7 +330,7 @@
 +    
 +    output wire [`COUNTER_WIDTH-1:0]   counter_fwd,
 +    output wire                        shake_mode,
-+    output reg                         keccak_idle,
++//    output reg                         keccak_idle,
 +    output reg                        squeeze_done,
 +    output reg                        consume_buffer,
 +    output reg  [`K_FIFO_ADDR_BITS-1:0] k_din_fifo_addr_re,
@@ -356,6 +356,12 @@
 +    
 +    reg [3:0] current_state;
 +    reg [3:0] next_state;
++    
++    reg         [`COUNTER_WIDTH-1:0]      counter = 0;
++    reg         [1:0]                     counter_ctrl = 0;
++    
++    reg                                   data_done = 0;
++    reg                                   data_done_reg = 0;
 +    
 +    always @ (posedge clk) begin : update_Keccak_state
 +        state_update_en <= 1'b0;
@@ -442,9 +448,6 @@
 +    reg                                   is_mode_shake = 0;
 +    reg                                   is_mode_shake_reg = 0;
 +    
-+    reg         [`COUNTER_WIDTH-1:0]      counter = 0;
-+    reg         [1:0]                     counter_ctrl = 0;
-+    
 +    reg                                   eof_internal = 0;
 +    reg                                   eof_internal_reg = 0;
 +    
@@ -475,15 +478,11 @@
 +    reg         [10:0]                    max_reads_count = 0;
 +    reg         [10:0]                    max_reads_count_reg = 0;
 +    
-+    reg                                   data_done = 0;
-+    reg                                   data_done_reg = 0;
-+    
-+//    always @ (posedge clk)  rst_y_mul <= (requested_bytes_reg=='h3); // L1 specific: avoid the case where extra squeeze output corrupts y res
 +    always @ (posedge clk)  rst_y_mul <= (requested_bytes_reg=='hb); // L1 specific: avoid the case where extra squeeze output corrupts y res
 +    
 +    assign shake_mode = is_mode_shake;
 +    
-+    always @ (posedge clk) keccak_idle <= (current_state == S_COMMAND_0);
++//    always @ (posedge clk) keccak_idle <= (current_state == S_COMMAND_0);
 +    assign counter_fwd =   counter;
 +    
 +    always @ (posedge clk) squeeze_done <= (current_state == S_DONE);
