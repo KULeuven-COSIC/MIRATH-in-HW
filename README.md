@@ -16,7 +16,11 @@ This branch (`main`) contains the level I RTL code. The level V code can be foun
 ## :hammer_and_wrench: Running Code & Testbench
 Download/clone this repository using:
 ```bash
-git clone
+git clone https://github.com/KULeuven-COSIC/MIRATH-in-HW.git
+```
+Change directory:
+```bash
+cd MIRATH-in-HW/
 ```
 Afterwards, it is necessary to initialize the submodules:
 ```bash
