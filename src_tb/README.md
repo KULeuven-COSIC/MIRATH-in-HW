@@ -15,7 +15,7 @@ Add the sources in the folder [src_tb](../src_tb/) as **simulation sources**:
 * **`tb_keygen.sv`**  
   Runs **key generation**. This is mainly useful for timing evaluation.
 
-* **`tb_keygen_100.sv`**
+* **`tb_keygen_100.sv`**  
   Runs 100 keygen runs and checks output (public vector **y**) for correctness. Golden keygen results for **y** have been derived by the Reference C implementation of Mirath.
 
 * **`tb_sign_verify.sv`**  
