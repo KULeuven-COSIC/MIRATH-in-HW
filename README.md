@@ -33,6 +33,19 @@ Finally, before using the RTL in an IDE (e.g. Vivado), apply patches to the open
 source patch.sh
 ```
 
+## :gear: Getting synthesis & Implementation results
+AMD Vivado provides a wide range of synthesis and implementation directives. We used the following directives to obtain our results:
+
+**Synthesis strategy: `Flow_Area_Optimized_medium`** (default options)
+
+**Implementation options:**
+  1. Opt Design (enabled): `Explore`
+  2. Place Design: `Auto_2`
+  3. Post-Place Phys Opt (enabled): `AggressiveExplore`
+  4. Route Design: `AggressiveExplore`
+  5. Post-Route Phys Opt (enabled): `AggressiveExplore`
+
+
 ## :book: Bibliography
 
 If you use or build upon the code in this repository, please cite our paper using our [CITATION](CITATION) key.
