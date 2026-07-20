@@ -18,7 +18,7 @@ Download/clone this repository using:
 ```bash
 git clone --branch <branch-name> https://github.com/KULeuven-COSIC/MIRATH-in-HW.git
 ```
-and replacing <branch-name> with main or L5
+and replacing `<branch-name>` with main or L5
 
 Change directory:
 ```bash
