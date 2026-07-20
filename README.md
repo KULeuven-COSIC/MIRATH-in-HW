@@ -36,7 +36,7 @@ source patch.sh
 ## :gear: Getting synthesis & Implementation results
 AMD Vivado provides a wide range of synthesis and implementation directives. We used the following directives to obtain our results:
 
-**Synthesis strategy: `Flow_Area_Optimized_medium`** (default options)
+**Synthesis strategy: `Flow_AreaOptimized_medium`** (default options)
 
 **Implementation options:**
   1. Opt Design (enabled): `Explore`
