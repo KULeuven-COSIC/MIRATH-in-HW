@@ -27,7 +27,7 @@ Add the sources in the folder [src_tb](../src_tb/) as **simulation sources**:
   Runs multiple back-to-back **sign/verify** tests. The number of runs is controlled by the parameter `DEFAULT_NUM_RUNS` near the top of the file. For each run, cycle counts are printed, and if all runs complete successfully, average signing and verification cycle counts are reported at the end.
 
 * **`tb_sign_verify_50_det.sv`**
- Runs 50 predetermined back-to-back **sign/verify** tests and checks important transcript values for correctness. Golden keygen results have been derived by the Reference C implementation of Mirath.
+ Runs 50 predetermined back-to-back **sign/verify** tests and checks important transcript values for correctness. Golden reference results have been derived by the Reference C implementation of Mirath.
 
 ## :gear: Changing test vectors
 The provided testbenches already include preloaded values, so it is best to first run them as-is before modifying seeds or messages.
