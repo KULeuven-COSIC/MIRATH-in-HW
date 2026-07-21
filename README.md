@@ -38,8 +38,8 @@ source patch.sh
 Our design was developed and tested with **AMD Vivado**, so we recommend using a machine with Vivado installed. 
 
 **Vivado source setup**
-1. Add the contents of the [src_rtl](../src_rtl/) folder to Vivado as **design sources**.
-2. Add the constraints file zynq.xdc (found in the [src_util](../src_util/) folder) using **Add or create constraints**.
+1. Add the contents of the [src_rtl](src_rtl/) folder to Vivado as **design sources**.
+2. Add the constraints file zynq.xdc (found in the [src_util](src_util/) folder) using **Add or create constraints**.
 
 AMD Vivado provides a wide range of synthesis and implementation directives. We used the following directives to obtain our results:
 
@@ -53,7 +53,7 @@ AMD Vivado provides a wide range of synthesis and implementation directives. We 
   5. Post-Route Phys Opt (enabled): `AggressiveExplore`
 
 ## :crossed_swords: Simulating the design
-For detailed info on the provided simulation testbench files and how to run them, consult the related [README](../src_tb/README.md) file in the [src_tb](../src_tb/) folder.
+For detailed info on the provided simulation testbench files and how to run them, consult the related [README](src_tb/README.md) file in the [src_tb](src_tb/) folder.
 
 ## :book: Bibliography
 
