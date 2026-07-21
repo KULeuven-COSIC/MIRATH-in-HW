@@ -6,8 +6,12 @@ Our design was developed and tested with **AMD Vivado**, so we recommend using a
 **Vivado source setup**
 Add the contents of the [src_rtl](../src_rtl/) folder to Vivado as **design sources**. This includes both the (System)Verilog source files **and** the  memory initialization files  (`data_mem_init.mem` & `key_sig_mem_init.mem`).
 
-Add the sources in the folder [src_tb](../src_tb/) as **simulation sources**:
+Add the following sources in the folder [src_tb](../src_tb/) as **simulation sources**:
 * `tb_keygen.sv`
+* `tb_keygen_100.sv`
+* `tb_sign_verify.sv`
+* `tb_multiple_sign_verify.sv`
+* `tb_sign_verify_50_det.sv`
 
 ## :crossed_swords: Running the Simulations
 1. The testbenches `tb_keygen.sv` and `tb_sign_verify.sv` use fixed input values for `sk_seed`, `pk_seed`, `salt`, `root_seed`, and the input message to perform a single keygen or sign/verify run.
