@@ -34,7 +34,7 @@ source patch.sh
 ```
 
 ## :gear: Getting Synthesis & Implementation results
-**Requirements**
+**Requirements**  
 Our design was developed and tested with **AMD Vivado**, so we recommend using a machine with Vivado installed. 
 
 **Vivado source setup**
