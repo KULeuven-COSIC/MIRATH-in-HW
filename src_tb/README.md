@@ -114,4 +114,4 @@ bc6cba0f3042da40
 ## :shield: Important Notes
 
 * Our implementation supports varying message lengths. The message length is controlled by the defined constant **`MSG_LEN_BYTES`**, in the verilog header file [mirath_hw_params.vh](../src_rtl/mirath_hw_params.vh). If you wish to try out different message lengths, the constant `MSG_LEN_BYTES` should *always* match the intended message size in bytes.
-* Vivado reads memory initialization files when the simulation starts. After changing a `.mem` file, close and restart the simulation so the new contents are loaded.
+* **Vivado reads memory initialization files when the simulation starts.** After changing a `.mem` file, close and restart the simulation so the new contents are loaded.
