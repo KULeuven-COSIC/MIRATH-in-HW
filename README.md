@@ -52,6 +52,8 @@ AMD Vivado provides a wide range of synthesis and implementation directives. We 
   4. Route Design: `AggressiveExplore`
   5. Post-Route Phys Opt (enabled): `AggressiveExplore`
 
+## :crossed_swords: Simulating the design
+For detailed info on the provided simulation testbench files and how to run them, consult the related [README](../src_tb/README.md) file in the [src_tb](../src_tb/) folder.
 
 ## :book: Bibliography
 
