@@ -33,7 +33,14 @@ Finally, before using the RTL in an IDE (e.g. Vivado), apply patches to the open
 source patch.sh
 ```
 
-## :gear: Getting synthesis & Implementation results
+## :gear: Getting Synthesis & Implementation results
+**Requirements**
+Our design was developed and tested with **AMD Vivado**, so we recommend using a machine with Vivado installed. 
+
+**Vivado source setup**
+1. Add the contents of the [src_rtl](../src_rtl/) folder to Vivado as **design sources**.
+2. Add the constraints file zynq.xdc (found in the [src_util](../src_util/) folder) using **Add or create constraints**.
+
 AMD Vivado provides a wide range of synthesis and implementation directives. We used the following directives to obtain our results:
 
 **Synthesis strategy: `Flow_AreaOptimized_medium`** (default options)
