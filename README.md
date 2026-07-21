@@ -1,8 +1,8 @@
 # Mirath in HW
 This repository contains the verilog/vhdl (RTL) sources of an efficient HW (FPGA) implementation of [Mirath](https://pqc-mirath.org/index.html), an MPC-in-the-Head-based post-quantum digital signature algorithm. 
-The design supports NIST security level I/V and all main routines (KeyGen, SigGen, SigVer). Our paper describing the design be found on [IACR ePrint](https://eprint.iacr.org/2026/206).
+The design supports NIST security level I/V (`main` and `L5`) and all main routines (KeyGen, SigGen, SigVer). Our paper describing the design be found on [IACR ePrint](https://eprint.iacr.org/2026/206).
 
-This branch (`L5`) contains the level V RTL code. The level I code can be found on the `main` branch.
+This branch (`main`) contains the level I RTL code. The level V code can be found on the `L5` branch.
 
 ## :file_folder: Contents
 
@@ -16,7 +16,13 @@ This branch (`L5`) contains the level V RTL code. The level I code can be found 
 ## :hammer_and_wrench: Running Code & Testbench
 Download/clone this repository using:
 ```bash
-git clone
+git clone --branch <branch-name> https://github.com/KULeuven-COSIC/MIRATH-in-HW.git
+```
+and replacing `<branch-name>` with `main` or `L5`
+
+Change directory:
+```bash
+cd MIRATH-in-HW/
 ```
 Afterwards, it is necessary to initialize the submodules:
 ```bash
@@ -26,6 +32,28 @@ Finally, before using the RTL in an IDE (e.g. Vivado), apply patches to the open
 ```bash
 source patch.sh
 ```
+
+## :gear: Getting Synthesis & Implementation results
+**Requirements**  
+Our design was developed and tested with **AMD Vivado**, so we recommend using a machine with Vivado installed. 
+
+**Vivado source setup**
+1. Add the contents of the [src_rtl](src_rtl/) folder to Vivado as **design sources**.
+2. Add the constraints file zynq.xdc (found in the [src_util](src_util/) folder) using **Add or create constraints**.
+
+AMD Vivado provides a wide range of synthesis and implementation directives. We used the following directives to obtain our results:
+
+**Synthesis strategy: `Flow_AreaOptimized_medium`** (default options)
+
+**Implementation options:**
+  1. Opt Design (enabled): `Explore`
+  2. Place Design: `Auto_2`
+  3. Post-Place Phys Opt (enabled): `AggressiveExplore`
+  4. Route Design: `AggressiveExplore`
+  5. Post-Route Phys Opt (enabled): `AggressiveExplore`
+
+## :crossed_swords: Simulating the design
+For detailed info on the provided simulation testbench files and how to run them, consult the related [README](src_tb/README.md) file in the [src_tb](src_tb/) folder.
 
 ## :book: Bibliography
 
