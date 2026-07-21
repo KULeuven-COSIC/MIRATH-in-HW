@@ -4,7 +4,7 @@
 Our design was developed and tested with **AMD Vivado**, so we recommend using a machine with Vivado installed. 
 
 **Vivado source setup**
-Add the folder [src_rtl](../src_rtl/) to Vivado as **design sources**.
+Add the contents of the [src_rtl](../src_rtl/) folder to Vivado as **design sources**. This includes both the (System)Verilog source files **and** the  memory initialization files  (`data_mem_init.mem` & `key_sig_mem_init.mem`).
 
 Add the sources in the folder [src_tb](../src_tb/) as **simulation sources**:
 
