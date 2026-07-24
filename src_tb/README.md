@@ -11,7 +11,7 @@ Add the following sources in the folder [src_tb](../src_tb/) as **simulation sou
 * `tb_keygen_100.sv`
 * `tb_sign_verify.sv`
 * `tb_multiple_sign_verify.sv`
-* `tb_sign_verify_50_det.sv` (coming soon for L5)
+* `tb_sign_verify_50_det.sv`
 
 ## :crossed_swords: Running the Simulations
 1. The testbenches `tb_keygen.sv` and `tb_sign_verify.sv` use fixed input values for `sk_seed`, `pk_seed`, `salt`, `root_seed`, and the input message to perform a single keygen or sign/verify run.
